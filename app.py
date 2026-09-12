@@ -99,6 +99,25 @@ def extract_pdf(uploaded):
 # =========================================================
 
 def build_prompt(
+def get_course_references(kode_mk):
+    """
+    Mengambil referensi yang sudah ditentukan
+    berdasarkan kode mata kuliah.
+    """
+
+    references = COURSE_REFERENCES.get(kode_mk, [])
+
+    if not references:
+        return ""
+
+    lines = []
+
+    for i, item in enumerate(references, start=1):
+        lines.append(
+            f"{i}. {item['referensi']}"
+        )
+
+    return "\n".join(lines)
     nama,
     prodi,
     upbjj,
