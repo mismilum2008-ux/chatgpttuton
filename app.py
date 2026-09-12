@@ -7,7 +7,7 @@ from courses import COURSES
 
 
 # =========================================================
-# KONFIGURASI HALAMAN
+# KONFIGURASI
 # =========================================================
 
 st.set_page_config(
@@ -66,7 +66,7 @@ st.markdown("""
 
 
 # =========================================================
-# FUNGSI EKSTRAK PDF
+# EKSTRAK PDF
 # =========================================================
 
 def extract_pdf(uploaded):
@@ -94,45 +94,116 @@ def build_prompt(
     prodi,
     upbjj,
     kode_mk,
-    mk,
+    mata_kuliah,
     sks_mk,
     pertanyaan,
     gaya,
     panjang,
     module_text,
 ):
+
     if module_text:
-        source_note = """
-MODUL DIUNGGAH.
+        sumber = """
+MODUL TERSEDIA.
 
 Gunakan isi modul yang diberikan sebagai sumber utama.
-Pengetahuan umum boleh digunakan sebagai pelengkap.
+Gunakan pengetahuan umum hanya untuk membantu menjelaskan
+materi yang masih kurang.
 
 Jangan mengarang nomor halaman.
-Jika menyebut halaman, pastikan halaman tersebut memang
-terlihat dari teks modul yang diberikan.
+Jangan membuat kutipan atau referensi yang tidak terdapat
+dalam materi.
 """
     else:
-        source_note = """
-MODUL TIDAK DIUNGGAH.
+        sumber = """
+MODUL TIDAK TERSEDIA.
 
-Gunakan konteks mata kuliah dan pengetahuan akademik yang relevan.
+Gunakan konteks mata kuliah yang diberikan dan pengetahuan
+akademik yang relevan.
 
 Jangan mengklaim bahwa jawaban berasal dari modul UT tertentu.
-Jangan mengarang nomor halaman, kutipan, nama penulis,
-atau isi modul yang tidak diberikan.
+Jangan membuat nomor halaman, kutipan, atau referensi palsu.
+"""
+
+    # -----------------------------------------------------
+    # ATURAN KHUSUS GAYA NATURAL
+    # -----------------------------------------------------
+
+    if gaya == "Natural seperti mahasiswa":
+        gaya_instruksi = """
+GAYA NATURAL SEPERTI MAHASISWA:
+
+Tulis seperti mahasiswa S1 yang benar-benar memahami materi
+dan sedang menjawab forum diskusi Tuton.
+
+Gunakan bahasa Indonesia yang:
+- natural
+- sopan
+- akademis tetapi tidak kaku
+- tidak terlalu sempurna atau terlalu formal
+- mengalir seperti tulisan manusia
+- menggunakan kalimat dengan panjang yang bervariasi
+
+Hindari:
+- bahasa seperti artikel jurnal
+- terlalu banyak subjudul
+- terlalu banyak poin bernomor
+- istilah bahasa Inggris yang tidak diperlukan
+- kalimat pembuka yang klise
+- kalimat seperti "Dalam era globalisasi yang semakin berkembang..."
+- kalimat yang terdengar seperti template AI
+- pengulangan kesimpulan yang sama dengan isi sebelumnya
+
+Tidak perlu memaksakan struktur bernomor jika jawaban lebih
+natural jika ditulis dalam beberapa paragraf.
+
+Jawaban tetap harus menunjukkan pemahaman terhadap materi.
+"""
+
+    elif gaya == "Akademik":
+        gaya_instruksi = """
+GAYA AKADEMIK:
+
+Gunakan bahasa akademik yang jelas, sistematis, objektif,
+dan sesuai dengan tingkat mahasiswa perguruan tinggi.
+
+Gunakan istilah ilmiah hanya jika memang relevan.
+"""
+
+    else:
+        gaya_instruksi = """
+GAYA RINGKAS DAN PADAT:
+
+Jawab langsung pada inti persoalan.
+Hindari pembukaan panjang dan penjelasan yang tidak diperlukan.
+Tetap berikan alasan atau contoh jika diperlukan.
+"""
+
+    # -----------------------------------------------------
+    # INSTRUKSI PANJANG
+    # -----------------------------------------------------
+
+    if panjang == "Pendek":
+        panjang_instruksi = """
+Buat jawaban relatif singkat, sekitar 3–5 paragraf.
+"""
+    elif panjang == "Panjang":
+        panjang_instruksi = """
+Buat jawaban cukup lengkap dan mendalam.
+Jelaskan alasan, konsep, dan contoh jika relevan.
+"""
+    else:
+        panjang_instruksi = """
+Buat jawaban dengan panjang sedang.
+Cukup lengkap untuk menjawab pertanyaan tetapi tidak bertele-tele.
 """
 
     return f"""
 Anda adalah asisten akademik untuk membantu mahasiswa
-menyusun jawaban diskusi Tuton Universitas Terbuka.
-
-Tujuan utama:
-Membantu mahasiswa memahami pertanyaan dan menghasilkan
-jawaban yang relevan, logis, akademis, tetapi tetap natural.
+Universitas Terbuka menyusun jawaban diskusi Tuton.
 
 ==================================================
-DATA MAHASISWA
+KONTEKS MAHASISWA
 ==================================================
 
 Nama:
@@ -147,8 +218,8 @@ UPBJJ:
 Kode mata kuliah:
 {kode_mk or "-"}
 
-Mata kuliah:
-{mk or "-"}
+Nama mata kuliah:
+{mata_kuliah or "-"}
 
 SKS:
 {sks_mk or "-"}
@@ -162,69 +233,78 @@ PERTANYAAN TUTON
 
 
 ==================================================
-PREFERENSI JAWABAN
+ATURAN PALING PENTING
 ==================================================
 
-Gaya:
-{gaya}
+1. Jawaban HARUS berfokus pada mata kuliah yang dipilih.
 
-Panjang:
-{panjang}
+2. Jangan mencampurkan materi dari mata kuliah lain hanya
+   karena konsep tersebut terlihat berkaitan.
+
+3. Contoh:
+   Jika mata kuliah yang dipilih adalah Pendidikan Kewarganegaraan,
+   fokus utama harus Pendidikan Kewarganegaraan.
+
+4. Jangan tiba-tiba memasukkan konsep Pendidikan Agama Islam,
+   Manajemen, Sistem Informasi, atau mata kuliah lain kecuali
+   pertanyaan memang secara eksplisit meminta hubungan dengan
+   bidang tersebut.
+
+5. Jangan menganggap semua pertanyaan membutuhkan perspektif
+   agama, teknologi, manajemen, atau bidang lain.
+
+6. Jika pertanyaan dapat dijawab sepenuhnya menggunakan konsep
+   mata kuliah yang dipilih, JANGAN membawa konsep dari bidang lain.
+
+7. Jika ada informasi yang tidak diketahui, jangan mengarang.
+
+8. Jangan membuat nama penulis, judul modul, nomor modul,
+   nomor halaman, kutipan, teori, atau referensi palsu.
+
+9. Jika modul PDF tersedia, prioritaskan isi modul tersebut.
+
+10. Jika modul tidak tersedia, jawab berdasarkan pengetahuan
+    akademik yang relevan dengan mata kuliah.
 
 
 ==================================================
-ATURAN PENULISAN
+GAYA PENULISAN
 ==================================================
 
-1. Jawab dalam Bahasa Indonesia.
+{gaya_instruksi}
 
-2. Sesuaikan isi jawaban dengan mata kuliah yang dipilih.
+{panjang_instruksi}
 
-3. Jangan menjawab terlalu umum jika konteks mata kuliahnya
-   memungkinkan jawaban yang lebih spesifik.
 
-4. Gunakan istilah akademik yang sesuai dengan bidang
-   mata kuliah, tetapi jangan membuat bahasa terlalu kaku.
+==================================================
+FORMAT JAWABAN
+==================================================
 
-5. Buat jawaban terasa seperti ditulis mahasiswa yang
-   memahami materi, bukan seperti artikel AI.
+Untuk jawaban Natural seperti mahasiswa, gunakan struktur
+yang terasa seperti tanggapan forum diskusi.
 
-6. Hindari kalimat pembuka yang terlalu generik seperti:
-   "Dalam era globalisasi..."
-   kecuali memang benar-benar relevan dengan pertanyaan.
+Tidak wajib menggunakan banyak subjudul atau daftar bernomor.
 
-7. Jangan mengulang pertanyaan secara berlebihan.
+Namun jawaban harus tetap:
+- menjawab pertanyaan secara langsung
+- memiliki argumentasi
+- memberikan contoh jika diperlukan
+- memiliki penutup atau kesimpulan yang wajar
 
-8. Jangan membuat fakta, kutipan, nama penulis, judul buku,
-   teori, nomor halaman, atau referensi yang tidak diketahui.
+Jangan menambahkan kalimat:
+"Demikian jawaban saya, semoga bermanfaat"
+atau kalimat template sejenis kecuali benar-benar diperlukan.
 
-9. Jika modul tersedia, prioritaskan modul tersebut.
+Jangan mengawali jawaban dengan:
+"Perkenalkan saya..."
+karena identitas mahasiswa sudah tersedia di sistem.
 
-10. Jika modul tidak tersedia, gunakan pengetahuan akademik
-    yang relevan dengan mata kuliah.
 
-11. Jawaban harus menjadi bahan yang masih dapat diedit
-    mahasiswa sebelum dikumpulkan.
+==================================================
+SUMBER
+==================================================
 
-12. Jangan mengatakan bahwa AI telah menggantikan pekerjaan
-    akademik mahasiswa.
-
-13. Sertakan bagian:
-    "Inti jawaban"
-
-14. Sertakan bagian:
-    "Kesimpulan"
-
-15. Jika pertanyaan membutuhkan contoh, berikan contoh
-    yang relevan dan mudah dipahami.
-
-16. Jangan membuat jawaban terlalu panjang jika pertanyaannya
-    sebenarnya dapat dijawab secara sederhana.
-
-17. Utamakan ketepatan isi dibanding penggunaan kata-kata
-    yang rumit.
-
-{source_note}
+{sumber}
 
 
 ==================================================
@@ -236,7 +316,7 @@ ISI MODUL
 
 
 # =========================================================
-# FORM INPUT
+# FORM
 # =========================================================
 
 with st.form("student_form"):
@@ -246,6 +326,7 @@ with st.form("student_form"):
     c1, c2 = st.columns(2)
 
     with c1:
+
         nama = st.text_input(
             "Nama lengkap"
         )
@@ -256,13 +337,10 @@ with st.form("student_form"):
         )
 
     with c2:
+
         upbjj = st.text_input(
             "UPBJJ"
         )
-
-        # ---------------------------------------------
-        # PILIH MATA KULIAH
-        # ---------------------------------------------
 
         course_options = [""] + list(COURSES.keys())
 
@@ -280,26 +358,27 @@ with st.form("student_form"):
             ),
         )
 
-    # ---------------------------------------------
-    # INFORMASI MATA KULIAH
-    # ---------------------------------------------
+    # -----------------------------------------------------
+    # DETAIL MATA KULIAH
+    # -----------------------------------------------------
 
     if kode_mk:
+
         mata_kuliah = COURSES[kode_mk]["nama"]
         sks_mk = COURSES[kode_mk]["sks"]
 
         st.caption(
-            f"📚 {kode_mk} — {mata_kuliah} "
-            f"• {sks_mk} SKS"
+            f"📚 {kode_mk} — {mata_kuliah} • {sks_mk} SKS"
         )
 
     else:
+
         mata_kuliah = ""
         sks_mk = ""
 
-    # ---------------------------------------------
+    # -----------------------------------------------------
     # PERTANYAAN
-    # ---------------------------------------------
+    # -----------------------------------------------------
 
     st.subheader("📝 Pertanyaan / Topik Diskusi")
 
@@ -307,14 +386,14 @@ with st.form("student_form"):
         "Masukkan pertanyaan Tuton",
         height=180,
         placeholder=(
-            "Contoh: Jelaskan bagaimana "
-            "penerapan konsep tersebut dalam kehidupan sehari-hari..."
+            "Contoh: Jelaskan bagaimana penerapan konsep "
+            "tersebut dalam kehidupan sehari-hari..."
         ),
     )
 
-    # ---------------------------------------------
+    # -----------------------------------------------------
     # MODUL
-    # ---------------------------------------------
+    # -----------------------------------------------------
 
     st.subheader("📚 Modul (opsional)")
 
@@ -322,14 +401,14 @@ with st.form("student_form"):
         "Upload modul PDF jika tersedia",
         type=["pdf"],
         help=(
-            "Tidak wajib. Tanpa modul, aplikasi tetap "
-            "dapat membuat jawaban berdasarkan konteks mata kuliah."
+            "Tidak wajib. Tanpa modul, aplikasi tetap berjalan "
+            "menggunakan konteks mata kuliah."
         ),
     )
 
-    # ---------------------------------------------
+    # -----------------------------------------------------
     # GAYA
-    # ---------------------------------------------
+    # -----------------------------------------------------
 
     st.subheader("⚙️ Gaya Jawaban")
 
@@ -359,7 +438,7 @@ with st.form("student_form"):
 
 
 # =========================================================
-# PROSES GENERATE
+# PROSES AI
 # =========================================================
 
 if submitted:
@@ -376,9 +455,9 @@ if submitted:
         st.error("Pertanyaan Tuton belum diisi.")
         st.stop()
 
-    # ---------------------------------------------
-    # AMBIL API KEY
-    # ---------------------------------------------
+    # -----------------------------------------------------
+    # API KEY
+    # -----------------------------------------------------
 
     api_key = st.secrets.get(
         "GOOGLE_API_KEY",
@@ -386,36 +465,40 @@ if submitted:
     )
 
     if not api_key:
+
         st.warning(
-            "Aplikasi sudah siap, tetapi API AI belum "
-            "dikonfigurasi."
+            "API AI belum dikonfigurasi."
         )
 
         st.info(
-            "Tambahkan GOOGLE_API_KEY pada Secrets "
-            "Streamlit untuk mengaktifkan generator AI."
+            "Tambahkan GOOGLE_API_KEY pada Secrets Streamlit."
         )
 
         st.stop()
 
-    # ---------------------------------------------
-    # BACA MODUL
-    # ---------------------------------------------
+    # -----------------------------------------------------
+    # PDF
+    # -----------------------------------------------------
 
     module_text = ""
 
     if modul:
+
         try:
+
             module_text = extract_pdf(modul)
+
         except Exception as e:
+
             st.error(
                 f"Modul PDF tidak dapat dibaca: {e}"
             )
+
             st.stop()
 
-    # ---------------------------------------------
-    # GENERATE AI
-    # ---------------------------------------------
+    # -----------------------------------------------------
+    # GENERATE
+    # -----------------------------------------------------
 
     with st.spinner(
         "🧠 Menganalisis pertanyaan dan menyusun jawaban..."
@@ -445,19 +528,22 @@ if submitted:
 
             answer = response.output_text
 
-            # -----------------------------------------
+            # -------------------------------------------------
             # HASIL
-            # -----------------------------------------
+            # -------------------------------------------------
 
             st.success(
                 "✅ Jawaban berhasil dibuat."
             )
 
             if modul:
+
                 st.info(
                     "🟢 Modul digunakan sebagai sumber utama."
                 )
+
             else:
+
                 st.warning(
                     "🟡 Modul tidak diunggah. "
                     "Jawaban dibuat berdasarkan konteks "
