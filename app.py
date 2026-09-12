@@ -4,6 +4,7 @@ import streamlit as st
 from pypdf import PdfReader
 from google import genai
 from courses import COURSES
+from references import COURSE_REFERENCES
 
 
 # =========================================================
