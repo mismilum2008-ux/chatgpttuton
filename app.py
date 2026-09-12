@@ -144,7 +144,7 @@ Jangan mengklaim bahwa jawaban berasal dari modul tertentu
 apabila modul tersebut tidak tersedia.
 """
 
-  if gaya == "Natural seperti mahasiswa":
+    if gaya == "Natural seperti mahasiswa":
     gaya_instruksi = """
 GAYA UTAMA: PENDAPAT PRIBADI MAHASISWA
 
