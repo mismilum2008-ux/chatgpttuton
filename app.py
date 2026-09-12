@@ -562,7 +562,26 @@ Hasil harus siap dibaca dan diedit oleh mahasiswa.
 # =========================================================
 # PROMPT PARAFRASE / BUAT LEBIH NATURAL
 # =========================================================
+def split_answer_and_references(text):
+    marker = "REFERENSI"
 
+    if marker in text:
+        parts = text.split(marker, 1)
+
+        answer_part = parts[0]
+        references_part = parts[1]
+
+        answer_part = answer_part.replace(
+            "JAWABAN TUTON",
+            "",
+            1
+        ).strip()
+
+        references_part = references_part.strip()
+
+        return answer_part, references_part
+
+    return text.strip(), ""
 def build_paraphrase_prompt(jawaban, kode_mk, mata_kuliah):
 
     return f"""
@@ -1043,14 +1062,37 @@ if "answer" in st.session_state and st.session_state["answer"]:
                     api_key=api_key
                 )
 
-                response = client.interactions.create(
-                    model="gemini-3.6-flash",
-                    input=build_paraphrase_prompt(
-                        st.session_state["answer"],
-                        st.session_state["kode_mk"],
-                        st.session_state["mata_kuliah"],
-                    ),
-                )
+                original_answer = st.session_state["answer"]
+
+jawaban_utama, referensi = split_answer_and_references(
+    original_answer
+)
+
+response = client.interactions.create(
+    model="gemini-3.6-flash",
+    input=build_paraphrase_prompt(
+        jawaban_utama,
+        st.session_state["kode_mk"],
+        st.session_state["mata_kuliah"],
+    ),
+)
+
+natural_body = response.output_text.strip()
+
+if referensi:
+    natural_answer = (
+        "JAWABAN TUTON\n\n"
+        + natural_body
+        + "\n\nREFERENSI\n\n"
+        + referensi
+    )
+else:
+    natural_answer = (
+        "JAWABAN TUTON\n\n"
+        + natural_body
+    )
+
+st.session_state["natural_answer"] = natural_answer
 
                 st.session_state["natural_answer"] = (
                     response.output_text
