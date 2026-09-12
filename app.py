@@ -123,37 +123,42 @@ if submitted:
 
     api_key = st.secrets.get("GOOGLE_API_KEY", os.getenv("GOOGLE_API_KEY"))
 
-if not api_key:
-    st.warning(
-        "Aplikasi sudah siap, tetapi API AI belum dikonfigurasi. "
-        "Tambahkan GOOGLE_API_KEY pada Secrets Streamlit untuk mengaktifkan generator AI."
-    )
-    st.info("Setelah API key dipasang, tombol ini akan menghasilkan jawaban otomatis.")
-    st.stop()
-
-with st.spinner("Menganalisis pertanyaan dan menyusun jawaban..."):
-    try:
-        module_text = extract_pdf(modul) if modul else ""
-
-        client = genai.Client(api_key=api_key)
-
-        response = client.models.generate_content(
-            model="gemini-2.5-flash",
-            contents=build_prompt(
-                nama, prodi, mata_kuliah, pertanyaan, gaya, panjang, module_text
-            ),
+    if not api_key:
+        st.warning(
+            "Aplikasi sudah siap, tetapi API AI belum dikonfigurasi. "
+            "Tambahkan GOOGLE_API_KEY pada Secrets Streamlit untuk mengaktifkan generator AI."
         )
+        st.info("Setelah API key dipasang, tombol ini akan menghasilkan jawaban otomatis.")
+        st.stop()
 
-        answer = response.text
+    with st.spinner("Menganalisis pertanyaan dan menyusun jawaban..."):
+        try:
+            module_text = extract_pdf(modul) if modul else ""
+
+            client = genai.Client(api_key=api_key)
+
+            response = client.models.generate_content(
+                model="gemini-2.5-flash",
+                contents=build_prompt(
+                    nama, prodi, mata_kuliah, pertanyaan, gaya, panjang, module_text
+                ),
+            )
+
+            answer = response.text
 
             st.success("Jawaban berhasil dibuat.")
+
             if modul:
                 st.info("🟢 Modul digunakan sebagai sumber utama.")
             else:
                 st.warning("🟡 Modul tidak diunggah. Jawaban dibuat tanpa sumber modul.")
 
             st.markdown("### 📄 Hasil Jawaban")
-            st.text_area("Silakan edit sebelum dikumpulkan", answer, height=520)
+            st.text_area(
+                "Silakan edit sebelum dikumpulkan",
+                answer,
+                height=520,
+            )
 
         except Exception as e:
             st.error(f"Terjadi kesalahan saat memproses: {e}")
