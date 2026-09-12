@@ -121,26 +121,30 @@ if submitted:
         st.error("Pertanyaan Tuton belum diisi.")
         st.stop()
 
-    api_key = st.secrets.get("OPENAI_API_KEY", os.getenv("OPENAI_API_KEY"))
-    if not api_key:
-        st.warning(
-            "Aplikasi sudah siap, tetapi API AI belum dikonfigurasi. "
-            "Tambahkan OPENAI_API_KEY pada Secrets Streamlit untuk mengaktifkan generator AI."
-        )
-        st.info("Setelah API key dipasang, tombol ini akan menghasilkan jawaban otomatis.")
-        st.stop()
+    api_key = st.secrets.get("GOOGLE_API_KEY", os.getenv("GOOGLE_API_KEY"))
 
-    with st.spinner("Menganalisis pertanyaan dan menyusun jawaban..."):
-        try:
-            module_text = extract_pdf(modul) if modul else ""
-            client = OpenAI(api_key=api_key)
-            response = client.responses.create(
-                model="gpt-5.6-luna",
-                input=build_prompt(
-                    nama, prodi, mata_kuliah, pertanyaan, gaya, panjang, module_text
-                ),
-            )
-            answer = response.output_text
+if not api_key:
+    st.warning(
+        "Aplikasi sudah siap, tetapi API AI belum dikonfigurasi. "
+        "Tambahkan GOOGLE_API_KEY pada Secrets Streamlit untuk mengaktifkan generator AI."
+    )
+    st.info("Setelah API key dipasang, tombol ini akan menghasilkan jawaban otomatis.")
+    st.stop()
+
+with st.spinner("Menganalisis pertanyaan dan menyusun jawaban..."):
+    try:
+        module_text = extract_pdf(modul) if modul else ""
+
+        client = genai.Client(api_key=api_key)
+
+        response = client.models.generate_content(
+            model="gemini-2.5-flash",
+            contents=build_prompt(
+                nama, prodi, mata_kuliah, pertanyaan, gaya, panjang, module_text
+            ),
+        )
+
+        answer = response.text
 
             st.success("Jawaban berhasil dibuat.")
             if modul:
