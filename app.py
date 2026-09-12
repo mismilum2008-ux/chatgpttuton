@@ -314,7 +314,78 @@ ISI MODUL
 {module_text[:90000] if module_text else "(tidak ada modul)"}
 """
 
+# =========================================================
+# PROMPT PARAFRASE / BUAT LEBIH NATURAL
+# =========================================================
 
+def build_paraphrase_prompt(jawaban, kode_mk, mata_kuliah):
+    return f"""
+Anda adalah editor jawaban Tuton mahasiswa Universitas Terbuka.
+
+MATA KULIAH:
+Kode: {kode_mk}
+Nama: {mata_kuliah}
+
+TUGAS:
+Parafrase jawaban berikut agar terasa lebih natural, wajar,
+dan seperti tulisan mahasiswa S1 yang benar-benar memahami
+materi dan menuliskannya sendiri.
+
+ATURAN WAJIB:
+
+1. Pertahankan seluruh makna, fakta, argumen, dan contoh penting
+   dari jawaban asli.
+
+2. Jangan menambahkan teori, fakta, contoh, atau informasi baru.
+
+3. Jangan menghilangkan poin penting dari jawaban asli.
+
+4. Jangan mengubah maksud atau kesimpulan utama.
+
+5. Tetap fokus hanya pada mata kuliah yang dipilih.
+
+6. Gunakan bahasa Indonesia yang natural, sopan, dan mudah dibaca.
+
+7. Gaya tulisan seperti mahasiswa yang sedang menjawab forum Tuton,
+   bukan seperti jurnal ilmiah atau artikel formal.
+
+8. Kurangi kalimat yang terlalu sempurna, terlalu kaku, atau terlalu
+   panjang jika sebenarnya bisa ditulis dengan lebih sederhana.
+
+9. Jangan menggunakan terlalu banyak subjudul atau penomoran jika
+   tidak diperlukan.
+
+10. Gunakan istilah bahasa Indonesia jika tersedia dan lebih wajar
+    daripada istilah bahasa Inggris.
+
+11. Hindari pembukaan template seperti:
+    "Halo Bapak/Ibu Tutor..."
+    "Izin menyampaikan..."
+    "Pada kesempatan ini..."
+    "Sebagai mahasiswa..."
+
+12. Hindari penutup template seperti:
+    "Demikian jawaban saya, semoga bermanfaat."
+
+13. Buat perpindahan antarparagraf terasa alami.
+
+14. Variasikan panjang kalimat agar tidak terasa seperti pola tulisan
+    yang dibuat secara otomatis.
+
+15. Jangan sengaja membuat kesalahan ejaan atau tata bahasa.
+
+16. Jangan menjelaskan proses parafrase.
+
+17. Keluarkan HANYA jawaban yang sudah diparafrasekan.
+
+JAWABAN ASLI:
+----------------------------------------
+
+{jawaban}
+
+----------------------------------------
+HASIL PARAFRASE:
+"""
 # =========================================================
 # FORM
 # =========================================================
