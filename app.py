@@ -1038,7 +1038,7 @@ if "answer" in st.session_state and st.session_state["answer"]:
         "tanpa mengubah isi dan inti jawaban."
     )
 
-        if st.button(
+if st.button(
         "✨ Buat Lebih Natural",
         use_container_width=True
     ):
