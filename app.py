@@ -38,7 +38,24 @@ with st.form("student_form"):
         prodi = st.text_input("Program studi")
     with c2:
         upbjj = st.text_input("UPBJJ")
-        mata_kuliah = st.text_input("Mata kuliah")
+       course_options = [""] + list(COURSES.keys())
+
+kode_mk = st.selectbox(
+    "Mata kuliah",
+    course_options,
+    format_func=lambda kode: (
+        "Pilih mata kuliah..."
+        if kode == ""
+        else f"{kode} — {COURSES[kode]['nama']} ({COURSES[kode]['sks']} SKS)"
+    ),
+)
+
+if kode_mk:
+    mata_kuliah = COURSES[kode_mk]["nama"]
+    sks_mk = COURSES[kode_mk]["sks"]
+else:
+    mata_kuliah = ""
+    sks_mk = ""
 
     st.subheader("📝 Pertanyaan / Topik Diskusi")
     pertanyaan = st.text_area(
