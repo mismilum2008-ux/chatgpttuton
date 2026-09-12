@@ -599,6 +599,11 @@ if submitted:
 
             answer = response.output_text
 
+            st.session_state["answer"] = answer
+            st.session_state["kode_mk"] = kode_mk
+            st.session_state["mata_kuliah"] = mata_kuliah
+            st.session_state["natural_answer"] = ""
+
             # -------------------------------------------------
             # HASIL
             # -------------------------------------------------
@@ -636,3 +641,73 @@ if submitted:
             st.error(
                 f"Terjadi kesalahan saat memproses: {e}"
             )
+# =========================================================
+# PARAFRASE / BUAT LEBIH NATURAL
+# =========================================================
+
+if "answer" in st.session_state and st.session_state["answer"]:
+
+    st.markdown("---")
+    st.markdown("### ✨ Buat Jawaban Lebih Natural")
+
+    st.caption(
+        "Ubah gaya bahasa agar lebih natural seperti tulisan mahasiswa "
+        "tanpa mengubah isi dan inti jawaban."
+    )
+
+    if st.button(
+        "✨ Buat Lebih Natural",
+        use_container_width=True
+    ):
+
+        api_key = st.secrets.get(
+            "GOOGLE_API_KEY",
+            os.getenv("GOOGLE_API_KEY")
+        )
+
+        if not api_key:
+            st.error("GOOGLE_API_KEY belum dikonfigurasi.")
+            st.stop()
+
+        with st.spinner(
+            "✍️ Sedang membuat versi yang lebih natural..."
+        ):
+
+            try:
+
+                client = genai.Client(
+                    api_key=api_key
+                )
+
+                response = client.interactions.create(
+                    model="gemini-3.6-flash",
+                    input=build_paraphrase_prompt(
+                        st.session_state["answer"],
+                        st.session_state["kode_mk"],
+                        st.session_state["mata_kuliah"],
+                    ),
+                )
+
+                st.session_state["natural_answer"] = (
+                    response.output_text
+                )
+
+            except Exception as e:
+
+                st.error(
+                    f"Gagal membuat versi natural: {e}"
+                )
+
+    # -----------------------------------------------------
+    # HASIL PARAFRASE
+    # -----------------------------------------------------
+
+    if st.session_state.get("natural_answer"):
+
+        st.markdown("### 📝 Versi Lebih Natural")
+
+        st.text_area(
+            "Hasil parafrase — silakan edit jika diperlukan",
+            st.session_state["natural_answer"],
+            height=520,
+        )
