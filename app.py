@@ -2,7 +2,7 @@ import os
 import io
 import streamlit as st
 from pypdf import PdfReader
-from openai import OpenAI
+from google import genai
 
 st.set_page_config(
     page_title="Tuton AI",
