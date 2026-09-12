@@ -3,6 +3,7 @@ import io
 import streamlit as st
 from pypdf import PdfReader
 from google import genai
+from courses import COURSES
 
 st.set_page_config(
     page_title="Tuton AI",
