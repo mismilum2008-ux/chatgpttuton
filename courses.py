@@ -240,4 +240,4 @@ COURSES = {
         "nama": "Sistem Informasi Akuntansi",
         "sks": 3,
     },
-}v
+}
