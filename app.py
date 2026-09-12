@@ -140,7 +140,13 @@ if submitted:
             response = client.models.generate_content(
                 model="gemini-2.5-flash",
                 contents=build_prompt(
-                    nama, prodi, mata_kuliah, pertanyaan, gaya, panjang, module_text
+                    nama,
+                    prodi,
+                    mata_kuliah,
+                    pertanyaan,
+                    gaya,
+                    panjang,
+                    module_text,
                 ),
             )
 
@@ -151,9 +157,12 @@ if submitted:
             if modul:
                 st.info("🟢 Modul digunakan sebagai sumber utama.")
             else:
-                st.warning("🟡 Modul tidak diunggah. Jawaban dibuat tanpa sumber modul.")
+                st.warning(
+                    "🟡 Modul tidak diunggah. Jawaban dibuat tanpa sumber modul."
+                )
 
             st.markdown("### 📄 Hasil Jawaban")
+
             st.text_area(
                 "Silakan edit sebelum dikumpulkan",
                 answer,
