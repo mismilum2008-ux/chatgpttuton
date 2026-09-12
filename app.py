@@ -1038,7 +1038,7 @@ if "answer" in st.session_state and st.session_state["answer"]:
         "tanpa mengubah isi dan inti jawaban."
     )
 
-    if st.button(
+        if st.button(
         "✨ Buat Lebih Natural",
         use_container_width=True
     ):
@@ -1052,6 +1052,12 @@ if "answer" in st.session_state and st.session_state["answer"]:
             st.error("GOOGLE_API_KEY belum dikonfigurasi.")
             st.stop()
 
+        original_answer = st.session_state["answer"]
+
+        jawaban_utama, referensi = split_answer_and_references(
+            original_answer
+        )
+
         with st.spinner(
             "✍️ Sedang membuat versi yang lebih natural..."
         ):
@@ -1062,41 +1068,31 @@ if "answer" in st.session_state and st.session_state["answer"]:
                     api_key=api_key
                 )
 
-                original_answer = st.session_state["answer"]
-
-jawaban_utama, referensi = split_answer_and_references(
-    original_answer
-)
-
-response = client.interactions.create(
-    model="gemini-3.6-flash",
-    input=build_paraphrase_prompt(
-        jawaban_utama,
-        st.session_state["kode_mk"],
-        st.session_state["mata_kuliah"],
-    ),
-)
-
-natural_body = response.output_text.strip()
-
-if referensi:
-    natural_answer = (
-        "JAWABAN TUTON\n\n"
-        + natural_body
-        + "\n\nREFERENSI\n\n"
-        + referensi
-    )
-else:
-    natural_answer = (
-        "JAWABAN TUTON\n\n"
-        + natural_body
-    )
-
-st.session_state["natural_answer"] = natural_answer
-
-                st.session_state["natural_answer"] = (
-                    response.output_text
+                response = client.interactions.create(
+                    model="gemini-3.6-flash",
+                    input=build_paraphrase_prompt(
+                        jawaban_utama,
+                        st.session_state["kode_mk"],
+                        st.session_state["mata_kuliah"],
+                    ),
                 )
+
+                natural_body = response.output_text.strip()
+
+                if referensi:
+                    natural_answer = (
+                        "JAWABAN TUTON\n\n"
+                        + natural_body
+                        + "\n\nREFERENSI\n\n"
+                        + referensi
+                    )
+                else:
+                    natural_answer = (
+                        "JAWABAN TUTON\n\n"
+                        + natural_body
+                    )
+
+                st.session_state["natural_answer"] = natural_answer
 
             except Exception as e:
 
