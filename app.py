@@ -1038,7 +1038,7 @@ if "answer" in st.session_state and st.session_state["answer"]:
         "tanpa mengubah isi dan inti jawaban."
     )
 
-if st.button(
+    if st.button(
         "✨ Buat Lebih Natural",
         use_container_width=True
     ):
@@ -1080,13 +1080,16 @@ if st.button(
                 natural_body = response.output_text.strip()
 
                 if referensi:
+
                     natural_answer = (
                         "JAWABAN TUTON\n\n"
                         + natural_body
                         + "\n\nREFERENSI\n\n"
                         + referensi
                     )
+
                 else:
+
                     natural_answer = (
                         "JAWABAN TUTON\n\n"
                         + natural_body
