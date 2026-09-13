@@ -298,7 +298,7 @@ if submitted:
 
             # Menggunakan API genai resmi (Gemini 2.5)
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.6-flash",
                 contents=prompt,
             )
 
@@ -349,7 +349,7 @@ if st.session_state.get("answer"):
                 )
 
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-3.6-flash",
                     contents=para_prompt,
                 )
 
