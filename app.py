@@ -174,12 +174,13 @@ PETUNJUK PENULISAN:
 DATABASE REFERENSI BAKU TERSEDIA:
 {static_refs if static_refs else "(Tidak ada referensi statis baku)"}
 
-ATURAN REFERENSI AKADEMIK:
-1. Utamakan menyertakan referensi baku dari DATABASE REFERENSI BAKU di atas jika cocok dengan pembahasan.
-2. Jika modul PDF diunggah, masukkan modul tersebut sebagai referensi utama.
-3. Tambahkan 1-2 referensi buku teks utama atau jurnal ilmiah nyata yang relevan dengan topik pembahasan (seperti pencarian standar Google Scholar).
-4. JANGAN MENGARANG judul buku, nama penulis, atau tahun terbit.
-5. DILARANG MENULISKAN kata "Google Scholar" sebagai nama penerbit atau sumber. Tuliskan dalam format sitasi baku (Penulis, Tahun, Judul, Penerbit/Jurnal).
+ATURAN REFERENSI AKADEMIK LENGKAP & NATURAL:
+1. Untuk Modul Universitas Terbuka, kaitkan topik pertanyaan dengan unit Modul dan Kegiatan Belajar (KB) yang relevan secara otomatis. Tuliskan dengan format spesifik seperti:
+   - Universitas Terbuka. (Tahun). {mata_kuliah} ({kode_mk}). Modul X (Kegiatan Belajar Y). Tangerang Selatan: Universitas Terbuka.
+2. Jika modul PDF diunggah, sebutkan estimasi Halaman/Modul berdasarkan teks PDF tersebut.
+3. Tambahkan 1-2 referensi buku ilmiah atau jurnal akademik nyata yang relevan dengan topik pembahasan.
+4. JANGAN MENGARANG fakta, nama penulis, atau judul buku yang fiktif.
+5. DILARANG MENULISKAN kata "Google Scholar" sebagai nama sumber. Gunakan format sitasi ilmiah baku (Penulis, Tahun, Judul, Penerbit/Jurnal).
 
 FORMAT OUTPUT:
 Keluarkan dalam PLAIN TEXT tanpa tanda Markdown (*, **, #).
@@ -191,7 +192,7 @@ JAWABAN TUTON
 
 REFERENSI
 
-1. [Daftar referensi yang valid]
+1. [Daftar referensi lengkap dengan rincian Modul & KB/Jurnal]
 """
 
 
@@ -310,9 +311,9 @@ if submitted:
                 pertanyaan, gaya, panjang, module_text
             )
 
-            # Menggunakan SDK Google GenAI resmi (model Gemini 3.6 Flash)
+            # Menggunakan SDK Google GenAI resmi (model Gemini 2.5 Flash)
             response = client.models.generate_content(
-                model="gemini-3.6-flash",
+                model="gemini-2.5-flash",
                 contents=prompt,
             )
 
@@ -363,7 +364,7 @@ if st.session_state.get("answer"):
                 )
 
                 response = client.models.generate_content(
-                    model="gemini-3.6-flash",
+                    model="gemini-2.5-flash",
                     contents=para_prompt,
                 )
 
