@@ -101,6 +101,10 @@ def build_prompt(
     pertanyaan, gaya, panjang, module_text
 ):
     """Menyusun prompt utama untuk pembuat jawaban Tuton."""
+    
+    # Ambil referensi statis dari database references.py
+    static_refs = get_course_references(kode_mk)
+
     if module_text:
         sumber = """
 MODUL TERSEDIA.
@@ -166,6 +170,16 @@ ISI MODUL:
 PETUNJUK PENULISAN:
 {gaya_instruksi}
 {panjang_instruksi}
+
+DATABASE REFERENSI BAKU TERSEDIA:
+{static_refs if static_refs else "(Tidak ada referensi statis baku)"}
+
+ATURAN REFERENSI AKADEMIK:
+1. Utamakan menyertakan referensi baku dari DATABASE REFERENSI BAKU di atas jika cocok dengan pembahasan.
+2. Jika modul PDF diunggah, masukkan modul tersebut sebagai referensi utama.
+3. Tambahkan 1-2 referensi buku teks utama atau jurnal ilmiah nyata yang relevan dengan topik pembahasan (seperti pencarian standar Google Scholar).
+4. JANGAN MENGARANG judul buku, nama penulis, atau tahun terbit.
+5. DILARANG MENULISKAN kata "Google Scholar" sebagai nama penerbit atau sumber. Tuliskan dalam format sitasi baku (Penulis, Tahun, Judul, Penerbit/Jurnal).
 
 FORMAT OUTPUT:
 Keluarkan dalam PLAIN TEXT tanpa tanda Markdown (*, **, #).
@@ -296,7 +310,7 @@ if submitted:
                 pertanyaan, gaya, panjang, module_text
             )
 
-            # Menggunakan API genai resmi (Gemini 2.5)
+            # Menggunakan SDK Google GenAI resmi (model Gemini 3.6 Flash)
             response = client.models.generate_content(
                 model="gemini-3.6-flash",
                 contents=prompt,
