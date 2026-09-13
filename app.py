@@ -311,9 +311,9 @@ if submitted:
                 pertanyaan, gaya, panjang, module_text
             )
 
-            # Menggunakan SDK Google GenAI resmi (model Gemini 2.5 Flash)
+            # Menggunakan SDK Google GenAI resmi (model Gemini 3.6 Flash)
             response = client.models.generate_content(
-                model="gemini-2.5-flash",
+                model="gemini-3.6-flash",
                 contents=prompt,
             )
 
@@ -364,7 +364,7 @@ if st.session_state.get("answer"):
                 )
 
                 response = client.models.generate_content(
-                    model="gemini-2.5-flash",
+                    model="gemini-3.6-flash",
                     contents=para_prompt,
                 )
 
