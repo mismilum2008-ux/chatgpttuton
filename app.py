@@ -1,8 +1,10 @@
 import os
 import io
+import time
 import streamlit as st
 from pypdf import PdfReader
 from google import genai
+
 from courses import COURSES
 from references import COURSE_REFERENCES
 
@@ -19,7 +21,7 @@ st.set_page_config(
 
 
 # =========================================================
-# TAMPILAN UTAMA (CSS & HERO)
+# TAMPILAN UTAMA
 # =========================================================
 
 st.markdown("""
@@ -46,6 +48,13 @@ st.markdown("""
     margin: 0;
     opacity: .92;
 }
+
+.file-info {
+    padding: 10px 14px;
+    border-radius: 10px;
+    background: #f4f7fb;
+    margin-top: 8px;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -62,29 +71,25 @@ st.markdown("""
 
 
 # =========================================================
-# FUNGSI EKSTRAK PDF
+# HELPER: EXTRACT TEXT LOKAL
 # =========================================================
 
-def extract_pdfs(uploaded_files):
+def extract_pdf_text(uploaded_file):
     """
-    Mengekstrak teks dari beberapa file PDF.
+    Mencoba mengambil text layer dari PDF.
 
-    Setiap file diberi penanda nama file agar AI dapat
-    membedakan sumber materi antar-modul.
+    Ini hanya sebagai pemeriksaan/fallback.
+    Untuk PDF scan, Gemini tetap akan membaca PDF asli.
     """
 
-    all_text = []
-
-    for uploaded in uploaded_files:
-
+    try:
         reader = PdfReader(
-            io.BytesIO(uploaded.getvalue())
+            io.BytesIO(uploaded_file.getvalue())
         )
 
         pages = []
 
         for i, page in enumerate(reader.pages):
-
             text = page.extract_text() or ""
 
             if text.strip():
@@ -92,17 +97,42 @@ def extract_pdfs(uploaded_files):
                     f"[Halaman {i + 1}]\n{text}"
                 )
 
-        if pages:
-            all_text.append(
-                "\n"
-                + "=" * 70
-                + f"\nFILE MODUL: {uploaded.name}\n"
-                + "=" * 70
-                + "\n"
-                + "\n\n".join(pages)
-            )
+        return "\n\n".join(pages)
 
-    return "\n\n".join(all_text)
+    except Exception:
+        return ""
+
+
+# =========================================================
+# MEMERIKSA PDF
+# =========================================================
+
+def inspect_uploaded_pdfs(uploaded_files):
+    """
+    Memeriksa apakah PDF memiliki text layer.
+
+    Hasilnya hanya digunakan sebagai informasi tambahan.
+    PDF asli tetap dikirim ke Gemini.
+    """
+
+    results = []
+
+    for uploaded in uploaded_files:
+
+        text = extract_pdf_text(uploaded)
+
+        if text.strip():
+            status = "text layer terdeteksi"
+        else:
+            status = "kemungkinan PDF scan/gambar"
+
+        results.append({
+            "name": uploaded.name,
+            "status": status,
+            "text": text,
+        })
+
+    return results
 
 
 # =========================================================
@@ -111,8 +141,7 @@ def extract_pdfs(uploaded_files):
 
 def get_course_references(kode_mk):
     """
-    Mengambil referensi statis bawaan berdasarkan
-    kode mata kuliah.
+    Mengambil referensi statis berdasarkan kode mata kuliah.
     """
 
     references = COURSE_REFERENCES.get(
@@ -140,7 +169,7 @@ def get_course_references(kode_mk):
 
 def split_answer_and_references(text):
     """
-    Memisahkan bagian JAWABAN TUTON dan REFERENSI.
+    Memisahkan bagian jawaban dan referensi.
     """
 
     marker = "REFERENSI"
@@ -192,136 +221,134 @@ def build_prompt(
     pertanyaan,
     gaya,
     panjang,
-    module_text
+    module_info
 ):
-
-    # -----------------------------------------------------
-    # SUMBER MATERI
-    # -----------------------------------------------------
 
     static_refs = get_course_references(
         kode_mk
     )
 
-    if module_text:
+    # -----------------------------------------------------
+    # INFORMASI MODUL
+    # -----------------------------------------------------
 
-        sumber = """
+    if module_info:
+
+        daftar_modul = "\n".join(
+            [
+                f"- {item['name']} "
+                f"({item['status']})"
+                for item in module_info
+            ]
+        )
+
+        sumber = f"""
 MODUL PDF TERSEDIA.
 
-Gunakan modul PDF yang diberikan pengguna sebagai
-sumber utama jawaban.
+PDF diberikan langsung kepada model melalui Gemini Files API.
+
+Gemini harus membaca dokumen PDF secara langsung.
+
+Daftar file:
+
+{daftar_modul}
 
 PENTING:
-1. Baca dan pahami seluruh materi yang tersedia sebelum
-   menentukan jawaban.
 
-2. Identifikasi terlebih dahulu modul, unit, atau bagian
-   materi yang paling relevan dengan pertanyaan.
+1. PDF dapat berupa PDF teks biasa maupun PDF hasil scan/gambar.
 
-3. Jangan menganggap semua modul harus digunakan.
+2. Jika PDF berupa scan/gambar, baca isi halaman melalui kemampuan
+   pemahaman dokumen/visual. Jangan menganggap dokumen kosong hanya
+   karena tidak memiliki text layer.
 
-4. Jika pertanyaan hanya berkaitan dengan satu modul,
-   prioritaskan modul tersebut.
+3. Identifikasi terlebih dahulu materi yang paling relevan dengan
+   pertanyaan Tuton.
 
-5. Jika pertanyaan berkaitan dengan beberapa modul,
-   gunakan hanya bagian yang memang relevan.
+4. Jangan menganggap semua modul harus digunakan.
 
-6. Jangan mencampurkan materi dari modul lain hanya
-   karena istilah atau topiknya terlihat mirip.
+5. Jika pertanyaan hanya berkaitan dengan satu modul, prioritaskan
+   modul tersebut.
 
-7. Jangan memaksakan penggunaan semua file yang diunggah.
+6. Jika beberapa modul relevan, gunakan hanya bagian yang benar-benar
+   diperlukan.
 
-8. Jika nama file menunjukkan nomor modul, gunakan nama
-   file tersebut sebagai petunjuk tambahan dalam menentukan
-   sumber yang relevan.
+7. Jangan mencampurkan materi dari modul yang tidak relevan.
 
-9. Modul yang benar-benar digunakan harus diprioritaskan
-   dalam bagian REFERENSI.
+8. Gunakan isi PDF sebagai sumber utama.
 
-10. Jangan mengarang isi modul yang tidak tersedia.
+9. Jika dapat menentukan nomor Modul, Unit, atau Kegiatan Belajar,
+   gunakan informasi tersebut.
 
-11. Jika informasi bibliografi tidak tersedia dengan jelas,
-    jangan mengarang nama penulis, tahun, judul, penerbit,
-    atau informasi bibliografi lainnya.
+10. Jika dapat menentukan halaman yang relevan dari PDF, gunakan
+    informasi halaman tersebut dalam referensi atau penjelasan.
 
-Pengetahuan akademik dari luar modul hanya digunakan
-sebagai pelengkap jika memang diperlukan.
+11. Jangan mengarang nomor halaman, nomor modul, KB, penulis,
+    tahun, penerbit, atau informasi bibliografi lain yang tidak
+    dapat dipastikan dari dokumen.
+
+12. Jika informasi bibliografi tidak terlihat atau tidak dapat
+    dipastikan, jangan mengarangnya.
+
+13. Jangan memaksakan penggunaan seluruh file PDF.
 """
 
     else:
 
+        daftar_modul = "(Tidak ada PDF yang diunggah)"
+
         sumber = """
 MODUL PDF TIDAK TERSEDIA.
 
-Jawaban tetap harus dibuat berdasarkan konteks
-mata kuliah yang dipilih dan pengetahuan akademik
-yang relevan.
+Jawaban tetap harus dibuat berdasarkan konteks mata kuliah
+yang dipilih dan pengetahuan akademik yang relevan.
 
-Gunakan sumber akademik yang relevan untuk membantu
-menyusun jawaban dan referensi.
+Gunakan referensi akademik yang benar-benar relevan.
 
-Jangan mengklaim bahwa jawaban berasal dari modul
-tertentu apabila modul tidak tersedia.
+Jangan mengklaim menggunakan modul tertentu jika modul
+tidak tersedia.
 """
 
 
     # -----------------------------------------------------
-    # GAYA JAWABAN
+    # GAYA
     # -----------------------------------------------------
 
     if gaya == "Natural seperti mahasiswa":
 
         gaya_instruksi = """
-GAYA UTAMA: PENDAPAT PRIBADI MAHASISWA
+GAYA UTAMA: NATURAL SEPERTI MAHASISWA
 
-Tulis seperti mahasiswa S1 yang sudah membaca dan
-memahami materi, kemudian menyampaikan pemahamannya
-sendiri dalam forum Tuton.
+Tulis seperti mahasiswa S1 yang memahami materi lalu
+menjelaskannya dengan bahasa sendiri.
 
-Jawaban harus terasa seperti pendapat mahasiswa,
-bukan seperti artikel yang dibuat oleh sistem akademik.
-
-Gunakan sudut pandang pribadi secara alami.
-
-Contoh ungkapan yang boleh digunakan sesekali:
-
-"Menurut saya..."
-"Bagi saya..."
-"Kalau saya melihatnya..."
-"Menurut pemahaman saya..."
-"Menurut pendapat saya..."
-
-Jangan menggunakan ungkapan tersebut di setiap paragraf.
-
-Bahasanya harus:
+Gunakan bahasa:
 
 - natural
 - sopan
-- mudah dipahami
-- cukup akademis tetapi tidak kaku
-- seperti tulisan mahasiswa dalam forum diskusi
-- tidak seperti jurnal
-- tidak seperti makalah
-- tidak seperti artikel berita
-- tidak terlalu sempurna atau terlalu formal
+- sederhana
+- cukup akademis
+- tidak kaku
+- tidak bertele-tele
 
-Jangan terlalu sering menggunakan istilah akademik
-yang rumit jika ada kata sederhana dengan makna yang sama.
+Gunakan sudut pandang pribadi secara wajar.
+
+Contoh yang boleh digunakan sesekali:
+
+"Menurut saya..."
+"Bagi saya..."
+"Menurut pemahaman saya..."
+"Kalau saya melihatnya..."
+
+Jangan menggunakan ungkapan tersebut di setiap paragraf.
+
+Jangan membuat tulisan seperti jurnal atau makalah.
 
 Jangan membuat semua paragraf memiliki pola yang sama.
 
-Variasikan panjang kalimat dan struktur paragraf.
+Variasikan panjang kalimat.
 
-Jangan selalu memulai jawaban dengan definisi atau teori.
-
-Jika pertanyaan meminta pendapat, berikan pendapat
-yang masuk akal berdasarkan materi mata kuliah.
-
-Pendapat pribadi tetap harus sesuai dengan konsep
-akademik dan tidak boleh bertentangan dengan materi.
-
-Hubungkan materi dengan kehidupan sehari-hari apabila
-pertanyaan memungkinkan.
+Hubungkan materi dengan contoh kehidupan sehari-hari
+jika memang relevan.
 
 Jangan sengaja membuat kesalahan tata bahasa atau ejaan.
 """
@@ -334,9 +361,8 @@ GAYA: AKADEMIK
 Gunakan bahasa akademik yang jelas, sistematis,
 objektif, dan sesuai tingkat mahasiswa perguruan tinggi.
 
-Tetap hindari kalimat yang terlalu bertele-tele.
-
-Gunakan teori dan konsep yang relevan dengan pertanyaan.
+Tetap hindari kalimat yang terlalu panjang
+dan tidak diperlukan.
 """
 
     else:
@@ -346,23 +372,21 @@ GAYA: RINGKAS DAN PADAT
 
 Jawab langsung pada inti pertanyaan.
 
-Gunakan bahasa sederhana tetapi tetap menunjukkan
-pemahaman terhadap materi.
+Gunakan bahasa sederhana tetapi tetap akademis.
 
 Hindari pembahasan yang tidak diperlukan.
 """
 
 
     # -----------------------------------------------------
-    # PANJANG JAWABAN
+    # PANJANG
     # -----------------------------------------------------
 
     if panjang == "Pendek":
 
         panjang_instruksi = """
-Target jawaban sekitar 3–5 paragraf.
-
-Utamakan inti jawaban dan contoh yang paling relevan.
+Target sekitar 3–5 paragraf.
+Utamakan inti jawaban.
 """
 
     elif panjang == "Panjang":
@@ -370,31 +394,28 @@ Utamakan inti jawaban dan contoh yang paling relevan.
         panjang_instruksi = """
 Buat jawaban cukup lengkap dan mendalam.
 
-Jelaskan konsep, alasan, hubungan antaride, dan contoh
-jika memang diperlukan.
+Jelaskan konsep, alasan, hubungan antaride,
+dan contoh jika diperlukan.
 
-Jangan menambahkan pembahasan hanya untuk membuat
-jawaban terlihat panjang.
+Jangan menambahkan pembahasan hanya untuk
+membuat jawaban lebih panjang.
 """
 
     else:
 
         panjang_instruksi = """
-Buat jawaban dengan panjang sedang.
-
-Cukup lengkap untuk menjawab pertanyaan dengan baik,
-tetapi jangan bertele-tele.
+Buat jawaban dengan panjang sedang dan cukup lengkap.
 """
 
 
     # =====================================================
-    # PROMPT LENGKAP
+    # PROMPT
     # =====================================================
 
     return f"""
 Anda adalah asisten akademik yang membantu mahasiswa
-Universitas Terbuka menyusun jawaban untuk forum
-Tutorial Online (Tuton).
+Universitas Terbuka menyusun jawaban forum Tutorial Online
+(Tuton).
 
 ============================================================
 DATA MAHASISWA
@@ -404,19 +425,16 @@ Nama:
 {nama or "-"}
 
 Program Studi:
-{prodi or "S1 Sistem Informasi"}
+{prodi or "-"}
 
 UPBJJ:
 {upbjj or "-"}
 
-Kode Mata Kuliah:
-{kode_mk or "-"}
-
-Nama Mata Kuliah:
-{mata_kuliah or "-"}
+Mata Kuliah:
+{kode_mk} - {mata_kuliah}
 
 SKS:
-{sks_mk or "-"}
+{sks_mk}
 
 
 ============================================================
@@ -434,28 +452,22 @@ Jawaban WAJIB berfokus pada:
 
 {kode_mk} - {mata_kuliah}
 
-Jangan mencampurkan materi dari mata kuliah lain
-hanya karena konsepnya terlihat mirip.
-
-Gunakan konsep yang memang relevan dengan mata kuliah
-yang dipilih.
-
-Jika konsep dari bidang lain memang diperlukan,
-gunakan hanya jika hubungannya jelas dengan pertanyaan.
+Jangan mencampurkan konsep dari mata kuliah lain
+jika tidak relevan.
 
 
 ============================================================
-SUMBER MATERI
+SUMBER MODUL
 ============================================================
 
 {sumber}
 
 
 ============================================================
-ISI MODUL YANG DIUNGGAH
+FILE MODUL
 ============================================================
 
-{module_text[:90000] if module_text else "(tidak ada modul)"}
+{daftar_modul}
 
 
 ============================================================
@@ -466,7 +478,7 @@ DATABASE REFERENSI BAKU
 
 
 ============================================================
-PENYUSUNAN JAWABAN
+ATURAN PENYUSUNAN
 ============================================================
 
 {gaya_instruksi}
@@ -475,58 +487,53 @@ PENYUSUNAN JAWABAN
 
 Jawab pertanyaan secara langsung.
 
-Jika pertanyaan meminta penjelasan, berikan penjelasan.
+Jika pertanyaan meminta penjelasan, jelaskan.
 
-Jika meminta alasan, berikan alasan.
+Jika pertanyaan meminta alasan, berikan alasan.
 
-Jika meminta bentuk atau jenis, jelaskan bentuk atau jenisnya.
+Jika meminta contoh, berikan contoh.
 
-Jika meminta contoh, berikan contoh yang relevan.
-
-Jika pertanyaan meminta pendapat, berikan pendapat
-berdasarkan pemahaman terhadap materi.
+Jika meminta pendapat, berikan pendapat berdasarkan
+pemahaman terhadap materi.
 
 Jangan menambahkan pembahasan yang tidak diperlukan.
 
 
 ============================================================
-PEMILIHAN MATERI MODUL
+PEMILIHAN MATERI
 ============================================================
 
-Jika tersedia beberapa modul PDF:
+Jika terdapat beberapa PDF:
 
-1. Tentukan terlebih dahulu bagian modul yang paling
-   relevan dengan pertanyaan.
+1. Cari terlebih dahulu materi yang berhubungan langsung
+   dengan pertanyaan.
 
-2. Prioritaskan konsep yang secara langsung menjawab
-   pertanyaan.
+2. Tentukan modul yang paling relevan.
 
 3. Jangan menggunakan semua modul hanya karena tersedia.
 
-4. Jangan menggabungkan teori dari modul berbeda jika
-   tidak diperlukan.
+4. Jika hanya satu modul relevan, prioritaskan modul itu.
 
-5. Jika hanya satu modul yang relevan, gunakan modul itu
-   sebagai sumber utama.
+5. Jika beberapa modul relevan, gunakan hanya bagian yang
+   mendukung jawaban.
 
-6. Jika beberapa modul relevan, gunakan hanya bagian
-   yang benar-benar mendukung jawaban.
+6. Jangan mencampurkan teori yang tidak berkaitan.
 
-7. Jika terdapat perbedaan pembahasan antar-modul,
-   jangan membuat kesimpulan sendiri tanpa dasar.
+7. Jika isi PDF scan, baca teks yang terlihat pada halaman
+   menggunakan kemampuan pemahaman dokumen.
 
-8. Referensi akhir harus mencerminkan sumber yang
-   benar-benar digunakan.
+8. Jangan menyatakan PDF tidak dapat dibaca hanya karena
+   tidak memiliki text layer.
 
 
 ============================================================
 GAYA FORUM TUTON
 ============================================================
 
-Jawaban harus terasa seperti tulisan mahasiswa yang
-sedang menjawab forum diskusi.
+Jawaban harus terasa seperti mahasiswa yang sedang
+menyampaikan pendapat dalam forum akademik.
 
-Jangan menggunakan pembukaan template seperti:
+Hindari pembukaan template seperti:
 
 "Halo Bapak/Ibu Tutor..."
 
@@ -540,119 +547,64 @@ Jangan menggunakan pembukaan template seperti:
 
 Langsung masuk ke pembahasan.
 
-Jangan menggunakan penutup template seperti:
+Hindari penutup template seperti:
 
 "Demikian jawaban saya, semoga bermanfaat."
 
 "Semoga jawaban ini dapat memberikan manfaat."
 
-"Terima kasih."
-
-Gunakan penutup hanya jika memang diperlukan.
+Jangan membuat jawaban terdengar seperti artikel
+yang dibuat secara otomatis.
 
 
 ============================================================
-REFERENSI AKADEMIK
-============================================================
-
-Setelah jawaban selesai, buat bagian:
-
 REFERENSI
+============================================================
 
-Referensi harus benar-benar relevan dengan isi jawaban
-dan mata kuliah:
+Setelah jawaban, buat bagian REFERENSI.
 
-{kode_mk} - {mata_kuliah}
+Prioritaskan:
 
-Prioritaskan sumber dengan urutan:
-
-1. Modul resmi Universitas Terbuka yang benar-benar digunakan.
+1. Modul Universitas Terbuka yang benar-benar digunakan.
 2. Buku akademik yang relevan.
-3. Jurnal atau artikel ilmiah yang relevan.
-4. Sumber resmi lembaga pendidikan atau pemerintah jika
-   memang relevan.
+3. Jurnal ilmiah yang relevan.
+4. Sumber resmi pemerintah/lembaga jika relevan.
 
-Jika modul PDF tersedia, gunakan informasi dari file
-tersebut untuk membantu menentukan modul yang relevan.
+Jika modul PDF tersedia, gunakan modul yang benar-benar
+dipakai sebagai sumber utama.
 
-Jika informasi bibliografi modul tidak tersedia dengan
-jelas, jangan mengarangnya.
+Jangan mengarang:
 
-JANGAN MENGARANG:
-
-- nama penulis
-- judul buku
-- judul jurnal
-- tahun terbit
-- nama penerbit
+- penulis
+- judul
+- tahun
+- penerbit
 - volume
-- nomor jurnal
+- nomor
 - halaman
 - DOI
 - URL
 - kutipan
 
-Lebih baik memberikan 1–3 referensi yang benar dan relevan
-daripada banyak referensi yang tidak pasti.
+Lebih baik 1–3 referensi yang benar daripada banyak
+referensi yang tidak pasti.
 
-Jangan memasukkan "Google Scholar" sebagai nama sumber.
-
-Google Scholar adalah mesin pencari akademik, bukan
-nama sumber referensi.
-
-
-============================================================
-FORMAT REFERENSI
-============================================================
-
-Jika informasi bibliografi tersedia, gunakan format
-sederhana seperti:
-
-Universitas Terbuka. (Tahun). Judul modul. Tangerang Selatan:
-Universitas Terbuka.
-
-Nama Penulis. (Tahun). Judul buku. Nama Penerbit.
-
-Nama Penulis. (Tahun). Judul artikel. Nama Jurnal, volume(nomor).
-
-Jangan membuat informasi yang tidak diketahui.
-
-Jika nomor modul atau KB dapat ditentukan dari isi
-modul yang diberikan, sebutkan secara spesifik.
-
-Contoh:
-
-Universitas Terbuka. (Tahun). Pendidikan Kewarganegaraan
-(MKWN4109), Modul 01, Kegiatan Belajar 1. Tangerang Selatan:
-Universitas Terbuka.
-
-Jangan membuat nomor modul atau KB jika tidak dapat
-dipastikan dari materi yang tersedia.
+Jangan menggunakan "Google Scholar" sebagai nama sumber.
 
 
 ============================================================
 FORMAT OUTPUT
 ============================================================
 
-Keluarkan jawaban dalam PLAIN TEXT.
+Keluarkan PLAIN TEXT.
 
-JANGAN menggunakan Markdown.
+Jangan gunakan Markdown.
 
-JANGAN menggunakan tanda **.
+Jangan gunakan tanda **.
 
-JANGAN menggunakan tanda * untuk format tulisan.
+Jangan gunakan tanda #.
 
-JANGAN menggunakan tanda # sebagai judul.
-
-JANGAN menggunakan heading Markdown.
-
-JANGAN menggunakan tabel Markdown.
-
-Gunakan paragraf biasa yang mengalir secara natural.
-
-Penomoran 1., 2., 3. hanya boleh digunakan apabila
-pertanyaan memang meminta beberapa bentuk, jenis,
-langkah, atau poin yang perlu dibedakan.
+Jangan gunakan tabel Markdown.
 
 Gunakan format:
 
@@ -668,59 +620,32 @@ REFERENSI
 
 
 ============================================================
-KETENTUAN AKADEMIK
+KETENTUAN PENTING
 ============================================================
-
-Pertahankan ketepatan akademik.
-
-Jangan mengarang fakta.
-
-Jangan mengarang teori.
-
-Jangan mengarang referensi.
-
-Jangan mengarang kutipan.
-
-Jangan mengarang nomor halaman.
 
 Jangan mengarang isi modul.
 
-Jangan mengklaim menggunakan modul tertentu jika isi
-modul tersebut tidak mendukung jawaban.
+Jangan mengarang fakta.
 
-Jika informasi tidak diketahui, jangan membuat informasi
-tersebut terlihat seolah-olah benar.
+Jangan mengarang referensi.
 
+Jangan mengarang halaman.
 
-============================================================
-HASIL AKHIR
-============================================================
+Jangan mengarang nomor Modul atau KB.
 
-Keluarkan dalam urutan:
-
-JAWABAN TUTON
-
-[isi jawaban]
-
-REFERENSI
-
-[daftar referensi]
-
-Jangan memberikan penjelasan tentang proses pembuatan
-jawaban.
+Jika informasi tidak dapat dipastikan, jangan membuatnya
+seolah-olah benar.
 
 Jangan menyebut bahwa Anda adalah AI.
 
-Jangan menyebut instruksi ini.
+Jangan menjelaskan proses internal.
 
-Jangan memberikan catatan tambahan.
-
-Hasil harus siap dibaca dan diedit oleh mahasiswa.
+Hasil akhir harus langsung berupa jawaban Tuton.
 """
 
 
 # =========================================================
-# PROMPT PARAFRASE / BUAT LEBIH NATURAL
+# PROMPT PARAFRASE
 # =========================================================
 
 def build_paraphrase_prompt(
@@ -737,160 +662,80 @@ MATA KULIAH:
 {kode_mk} - {mata_kuliah}
 
 
-============================================================
-TUGAS
-============================================================
+TUGAS:
 
-Edit dan parafrase jawaban berikut agar terasa lebih
-natural, lebih luwes, dan lebih seperti tulisan mahasiswa
-yang memahami materi lalu menuliskannya dengan bahasa
-sendiri.
+Edit jawaban berikut agar lebih natural dan luwes
+seperti tulisan mahasiswa yang memahami materi
+dan menjelaskannya dengan bahasa sendiri.
 
-Tujuannya bukan membuat jawaban menjadi lebih panjang.
-
-Tujuannya adalah membuat bahasa lebih wajar dan enak
-dibaca tanpa mengubah isi.
+Jangan mengubah makna.
 
 
-============================================================
-ATURAN UTAMA
-============================================================
+ATURAN:
 
-1. Pertahankan makna utama jawaban.
+1. Pertahankan fakta.
 
-2. Pertahankan fakta yang terdapat dalam jawaban.
+2. Pertahankan argumen.
 
-3. Pertahankan argumen dan alasan yang digunakan.
+3. Pertahankan contoh.
 
-4. Pertahankan contoh yang sudah ada.
+4. Pertahankan kesimpulan.
 
-5. Pertahankan kesimpulan atau inti pembahasan.
+5. Jangan menambahkan teori baru.
 
-6. Jangan menambahkan teori baru.
+6. Jangan menambahkan fakta baru.
 
-7. Jangan menambahkan fakta baru.
+7. Jangan menambahkan referensi baru.
 
-8. Jangan menambahkan contoh baru.
+8. Jangan mengubah isi akademik.
 
-9. Jangan menghilangkan poin penting.
+9. Jangan membuat tulisan seperti jurnal.
 
-10. Jangan mengubah jawaban menjadi lebih akademis.
+10. Jangan membuat tulisan terlalu formal.
 
-11. Jangan membuat jawaban menjadi seperti jurnal atau
-    makalah.
+11. Jangan sengaja membuat kesalahan tata bahasa.
 
-12. Tetap fokus pada mata kuliah:
-    {kode_mk} - {mata_kuliah}
+12. Variasikan struktur kalimat.
+
+13. Buat kalimat yang terasa wajar untuk mahasiswa.
 
 
-============================================================
-CARA MEMBUATNYA LEBIH NATURAL
-============================================================
-
-Ubah kalimat yang terasa terlalu kaku menjadi kalimat
-yang lebih sederhana dan wajar.
-
-Jika sebuah kalimat terlalu panjang, boleh dipecah
-menjadi dua kalimat.
-
-Jika beberapa kalimat memiliki pola yang sama,
-variasikan susunannya.
-
-Gunakan kata-kata yang umum digunakan mahasiswa ketika
-menjelaskan pendapat dalam forum akademik.
-
-Jangan menggunakan bahasa percakapan yang terlalu santai.
-
-Jangan sengaja membuat kesalahan tata bahasa atau ejaan.
-
-Jangan mengganti kata hanya untuk terlihat berbeda apabila
-kata sebelumnya sudah natural.
-
-Parafrase harus tetap terasa sebagai tulisan mahasiswa,
-bukan tulisan yang sengaja dibuat "berantakan".
-
-
-============================================================
-HINDARI GAYA TEMPLATE
-============================================================
-
-Jangan menggunakan:
+HINDARI:
 
 "Halo Bapak/Ibu Tutor..."
 
 "Izin menyampaikan pendapat..."
 
-"Pada kesempatan ini saya akan membahas..."
+"Pada kesempatan ini..."
 
 "Sebagai mahasiswa..."
 
-"Di era globalisasi yang semakin berkembang..."
-
-"Berdasarkan uraian di atas..."
-
-"Hal ini menunjukkan bahwa..."
+"Di era globalisasi..."
 
 "Demikian jawaban saya, semoga bermanfaat."
 
-Jangan menggunakan kalimat template hanya untuk
-mengawali atau mengakhiri jawaban.
 
-
-============================================================
-JANGAN MENGUBAH ISI
-============================================================
-
-Jangan melakukan hal berikut:
-
-- menambah teori
-- menambah referensi
-- menambah kutipan
-- menambah fakta
-- mengubah contoh
-- mengubah kesimpulan
-- memasukkan konsep dari mata kuliah lain
-- mengubah maksud penulis
-
-Jika jawaban asli sudah benar secara akademik,
-pertahankan isi akademiknya.
-
-
-============================================================
-JAWABAN ASLI
-============================================================
-
-----------------------------------------
+JAWABAN ASLI:
 
 {jawaban}
 
-----------------------------------------
 
+FORMAT:
 
-============================================================
-FORMAT OUTPUT
-============================================================
-
-Keluarkan hanya versi jawaban yang sudah dibuat
-lebih natural.
+Keluarkan hanya hasil editan.
 
 PLAIN TEXT.
 
-Jangan menggunakan Markdown.
-
-Jangan memberikan penjelasan sebelum atau sesudah jawaban.
+Jangan menjelaskan perubahan.
 
 Jangan mengatakan "Berikut hasil parafrase".
 
-Jangan menjelaskan perubahan yang dilakukan.
-
 Jangan menyebut AI.
-
-Hasil akhir harus langsung berupa jawaban Tuton.
 """
 
 
 # =========================================================
-# FORM INPUT MAHASISWA
+# FORM INPUT
 # =========================================================
 
 with st.form("student_form"):
@@ -937,7 +782,7 @@ with st.form("student_form"):
 
 
     # -----------------------------------------------------
-    # DETAIL MATA KULIAH
+    # MATA KULIAH
     # -----------------------------------------------------
 
     if kode_mk:
@@ -993,11 +838,15 @@ with st.form("student_form"):
         type=["pdf"],
         accept_multiple_files=True,
         help=(
-            "Opsional. Bisa upload beberapa modul PDF "
-            "sekaligus. Jika kosong, aplikasi tetap "
-            "berjalan menggunakan konteks mata kuliah."
+            "Bisa upload beberapa modul sekaligus. "
+            "PDF biasa maupun PDF hasil scan dapat digunakan."
         ),
     )
+
+
+    # -----------------------------------------------------
+    # INFORMASI FILE
+    # -----------------------------------------------------
 
     if modul:
 
@@ -1007,13 +856,18 @@ with st.form("student_form"):
 
         for file in modul:
 
+            file_size_mb = (
+                file.size / (1024 * 1024)
+            )
+
             st.write(
-                f"• {file.name}"
+                f"• {file.name} "
+                f"({file_size_mb:.2f} MB)"
             )
 
 
     # -----------------------------------------------------
-    # GAYA JAWABAN
+    # PENGATURAN
     # -----------------------------------------------------
 
     st.subheader(
@@ -1047,13 +901,13 @@ with st.form("student_form"):
 
 
 # =========================================================
-# PROSES PEMBUATAN JAWABAN
+# PROSES UTAMA
 # =========================================================
 
 if submitted:
 
     # -----------------------------------------------------
-    # VALIDASI INPUT
+    # VALIDASI
     # -----------------------------------------------------
 
     if not nama.strip():
@@ -1097,48 +951,128 @@ if submitted:
 
         st.warning(
             "API Key belum dikonfigurasi "
-            "pada Streamlit Secrets / "
-            "Environment Variable."
+            "pada Streamlit Secrets / Environment Variable."
         )
 
         st.stop()
 
 
     # -----------------------------------------------------
-    # PROSES PDF
+    # CLIENT GEMINI
     # -----------------------------------------------------
 
-    module_text = ""
+    try:
+
+        client = genai.Client(
+            api_key=api_key
+        )
+
+    except Exception as e:
+
+        st.error(
+            f"Gagal membuat koneksi Gemini: {e}"
+        )
+
+        st.stop()
+
+
+    # -----------------------------------------------------
+    # PERIKSA PDF
+    # -----------------------------------------------------
+
+    module_info = []
 
     if modul:
 
-        try:
+        with st.spinner(
+            "📚 Memeriksa modul PDF..."
+        ):
 
-            module_text = extract_pdfs(
-                modul
-            )
+            try:
 
-            if not module_text.strip():
+                module_info = (
+                    inspect_uploaded_pdfs(
+                        modul
+                    )
+                )
 
-                st.warning(
-                    "Modul PDF tidak memiliki "
-                    "teks yang dapat dibaca."
+            except Exception as e:
+
+                st.error(
+                    f"Gagal memeriksa PDF: {e}"
                 )
 
                 st.stop()
 
-        except Exception as e:
-
-            st.error(
-                f"Modul PDF tidak dapat dibaca: {e}"
-            )
-
-            st.stop()
-
 
     # -----------------------------------------------------
-    # GENERATE JAWABAN
+    # UPLOAD PDF KE GEMINI FILES API
     # -----------------------------------------------------
+
+    uploaded_gemini_files = []
+
+    if modul:
+
+        with st.spinner(
+            "☁️ Mengunggah modul ke Gemini..."
+        ):
+
+            try:
+
+                for uploaded in modul:
+
+                    # Pastikan pointer berada di awal
+                    uploaded.seek(0)
+
+                    # Gemini SDK menerima file-like object.
+                    gemini_file = client.files.upload(
+                        file=uploaded,
+                        config={
+                            "mime_type": "application/pdf",
+                            "display_name": uploaded.name,
+                        },
+                    )
+
+                    uploaded_gemini_files.append(
+                        gemini_file
+                    )
+
+                st.success(
+                    f"✅ {len(uploaded_gemini_files)} "
+                    "modul berhasil diunggah ke Gemini."
+                )
+
+            except Exception as e:
+
+                st.error(
+                    "Gagal mengunggah PDF ke Gemini. "
+                    f"Detail: {e}"
+                )
+
+                st.stop()
+
+
+    # =====================================================
+    # BUILD PROMPT
+    # =====================================================
+
+    prompt = build_prompt(
+        nama,
+        prodi,
+        upbjj,
+        kode_mk,
+        mata_kuliah,
+        sks_mk,
+        pertanyaan,
+        gaya,
+        panjang,
+        module_info,
+    )
+
+
+    # =====================================================
+    # GENERATE
+    # =====================================================
 
     with st.spinner(
         "🧠 Menganalisis pertanyaan dan menyusun jawaban..."
@@ -1146,35 +1080,63 @@ if submitted:
 
         try:
 
-            client = genai.Client(
-                api_key=api_key
-            )
+            # -------------------------------------------------
+            # TANPA PDF
+            # -------------------------------------------------
 
-            prompt = build_prompt(
-                nama,
-                prodi,
-                upbjj,
-                kode_mk,
-                mata_kuliah,
-                sks_mk,
-                pertanyaan,
-                gaya,
-                panjang,
-                module_text,
-            )
+            if not uploaded_gemini_files:
 
-
-            response = client.models.generate_content(
-                model="gemini-3.6-flash",
-                contents=prompt,
-            )
-
-
-            answer = response.text
+                response = client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=prompt,
+                )
 
 
             # -------------------------------------------------
-            # SIMPAN SESSION
+            # DENGAN PDF
+            # -------------------------------------------------
+
+            else:
+
+                contents = []
+
+                # Prompt utama
+                contents.append(
+                    prompt
+                )
+
+                # Semua PDF
+                for gemini_file in uploaded_gemini_files:
+
+                    contents.append(
+                        gemini_file
+                    )
+
+
+                response = client.models.generate_content(
+                    model="gemini-3.6-flash",
+                    contents=contents,
+                )
+
+
+            # -------------------------------------------------
+            # HASIL
+            # -------------------------------------------------
+
+            if not response.text:
+
+                st.error(
+                    "Gemini tidak mengembalikan jawaban."
+                )
+
+                st.stop()
+
+
+            answer = response.text.strip()
+
+
+            # -------------------------------------------------
+            # SESSION STATE
             # -------------------------------------------------
 
             st.session_state["answer"] = (
@@ -1192,23 +1154,44 @@ if submitted:
             st.session_state["natural_answer"] = ""
 
 
-            # -------------------------------------------------
-            # NOTIFIKASI
-            # -------------------------------------------------
-
             st.success(
                 "✅ Jawaban berhasil dibuat."
             )
 
 
+            # -------------------------------------------------
+            # INFO PDF
+            # -------------------------------------------------
+
             if modul:
 
-                st.info(
-                    f"🟢 {len(modul)} modul digunakan "
-                    "sebagai bahan analisis. "
-                    "AI diarahkan untuk memilih materi "
-                    "yang paling relevan."
+                scan_count = sum(
+                    1
+                    for item in module_info
+                    if "scan" in item["status"]
                 )
+
+                text_count = (
+                    len(module_info)
+                    - scan_count
+                )
+
+
+                if scan_count > 0:
+
+                    st.info(
+                        f"📖 {len(modul)} modul diproses. "
+                        f"{scan_count} file terdeteksi sebagai "
+                        "kemungkinan PDF scan/gambar dan "
+                        "dibaca langsung oleh Gemini."
+                    )
+
+                else:
+
+                    st.info(
+                        f"📖 {len(modul)} modul diproses "
+                        "langsung oleh Gemini."
+                    )
 
             else:
 
@@ -1222,12 +1205,14 @@ if submitted:
         except Exception as e:
 
             st.error(
-                f"Terjadi kesalahan saat memproses: {e}"
+                "Terjadi kesalahan saat memproses jawaban."
             )
+
+            st.exception(e)
 
 
 # =========================================================
-# MENAMPILKAN HASIL
+# HASIL JAWABAN
 # =========================================================
 
 if st.session_state.get(
@@ -1249,7 +1234,7 @@ if st.session_state.get(
 
 
     # =====================================================
-    # PARAFRASE
+    # NATURAL
     # =====================================================
 
     st.markdown(
@@ -1355,7 +1340,7 @@ if st.session_state.get(
 
 
     # =====================================================
-    # HASIL VERSI NATURAL
+    # HASIL NATURAL
     # =====================================================
 
     if st.session_state.get(
