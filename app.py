@@ -888,7 +888,33 @@ Tampilkan hanya hasil akhirnya.
 
 
 # =========================================================
-# FORM
+# TAMPILAN MATA KULIAH (DI LUAR FORM AGAR INTERAKTIF)
+# =========================================================
+
+st.subheader("📚 Mata Kuliah")
+
+course_options = list(COURSES.keys())
+
+kode_mk = st.selectbox(
+    "Kode Mata Kuliah",
+    options=course_options,
+    format_func=lambda kode: (
+        f"{kode} — {COURSES[kode]['nama']}"
+    )
+)
+
+# Ambil data langsung sesuai pilihan
+selected_course = COURSES[kode_mk]
+mata_kuliah = selected_course["nama"]
+sks = selected_course["sks"]
+
+st.info(
+    f"📖 **{mata_kuliah}**  •  **{sks} SKS**"
+)
+
+
+# =========================================================
+# FORM UTAMA
 # =========================================================
 
 with st.form("tuton_form"):
@@ -910,44 +936,6 @@ with st.form("tuton_form"):
         placeholder="Contoh: Palangkaraya"
     )
 
-
-    st.subheader("📚 Mata Kuliah")
-
-
-    # -----------------------------------------------------
-    # DROPDOWN KODE MK
-    # -----------------------------------------------------
-
-    course_options = list(
-        COURSES.keys()
-    )
-
-    kode_mk = st.selectbox(
-        "Kode Mata Kuliah",
-        options=course_options,
-
-        format_func=lambda kode: (
-            f"{kode} — {COURSES[kode]['nama']}"
-        )
-    )
-
-
-    # -----------------------------------------------------
-    # AMBIL DATA BERDASARKAN KODE YANG DIPILIH
-    # -----------------------------------------------------
-
-    selected_course = COURSES[kode_mk]
-
-    mata_kuliah = selected_course["nama"]
-
-    sks = selected_course["sks"]
-
-
-    st.info(
-        f"📖 **{mata_kuliah}**  •  **{sks} SKS**"
-    )
-
-
     st.subheader("📝 Pertanyaan Diskusi")
 
     pertanyaan = st.text_area(
@@ -958,55 +946,44 @@ with st.form("tuton_form"):
         )
     )
 
-
     st.subheader("📄 Modul Tuton")
 
     modul = st.file_uploader(
         "Upload modul PDF jika tersedia",
         type=["pdf"],
         accept_multiple_files=True,
-
         help=(
             "Opsional. Bisa PDF biasa maupun PDF hasil scan. "
             "Maksimal 50 MB per file."
         )
     )
 
-
     if modul:
-
         st.caption(
             f"📎 {len(modul)} file PDF dipilih"
         )
-
 
     st.subheader("✍️ Gaya Jawaban")
 
     style = st.selectbox(
         "Pilih gaya penulisan",
-
         [
             "Natural seperti mahasiswa",
             "Akademik",
             "Ringkas dan padat",
         ],
-
         index=0
     )
 
-
     length = st.selectbox(
         "Panjang jawaban",
-
         [
             "Pendek",
             "Sedang",
             "Panjang",
         ],
-
         index=1
     )
-
 
     submitted = st.form_submit_button(
         "🚀 Buat Jawaban Tuton",
@@ -1028,7 +1005,6 @@ if submitted:
 
         st.stop()
 
-
     if not pertanyaan.strip():
 
         st.warning(
@@ -1037,12 +1013,10 @@ if submitted:
 
         st.stop()
 
-
     client = get_client()
 
     if not client:
         st.stop()
-
 
     try:
 
@@ -1062,13 +1036,11 @@ if submitted:
                     modul
                 )
 
-
             too_large = [
                 item["name"]
                 for item in inspections
                 if item["status"] == "too_large"
             ]
-
 
             if too_large:
 
@@ -1081,7 +1053,6 @@ if submitted:
                 )
 
                 st.stop()
-
 
             with st.expander(
                 "📄 Status modul",
@@ -1105,7 +1076,6 @@ if submitted:
                             "Akan dibaca langsung oleh Gemini."
                         )
 
-
         # -------------------------------------------------
         # UPLOAD PDF KE GEMINI
         # -------------------------------------------------
@@ -1125,7 +1095,6 @@ if submitted:
                     )
                 )
 
-
         # -------------------------------------------------
         # GABUNG TEKS YANG BERHASIL DIEKSTRAK
         # -------------------------------------------------
@@ -1144,11 +1113,9 @@ if submitted:
 """
                 )
 
-
         module_text = "\n\n".join(
             extracted_texts
         )
-
 
         # -------------------------------------------------
         # INFO MODUL
@@ -1157,7 +1124,6 @@ if submitted:
         module_info = build_module_info(
             inspections
         )
-
 
         # -------------------------------------------------
         # REFERENSI
@@ -1168,7 +1134,6 @@ if submitted:
                 kode_mk
             )
         )
-
 
         # -------------------------------------------------
         # BUILD PROMPT
@@ -1201,7 +1166,6 @@ if submitted:
             static_references=static_references,
         )
 
-
         # -------------------------------------------------
         # GENERATE
         # -------------------------------------------------
@@ -1216,7 +1180,6 @@ if submitted:
                 gemini_files
             )
 
-
         # -------------------------------------------------
         # PARSE
         # -------------------------------------------------
@@ -1227,10 +1190,8 @@ if submitted:
             )
         )
 
-
         if not answer:
             answer = raw_answer
-
 
         # -------------------------------------------------
         # SIMPAN
@@ -1244,11 +1205,9 @@ if submitted:
 
         st.session_state.natural_answer = ""
 
-
         st.success(
             "✅ Jawaban berhasil dibuat."
         )
-
 
     except Exception as e:
 
@@ -1276,7 +1235,6 @@ if st.session_state.answer:
 
     st.subheader("💬 Jawaban Tuton")
 
-
     st.text_area(
         "Hasil jawaban",
 
@@ -1286,7 +1244,6 @@ if st.session_state.answer:
 
         key="answer_display"
     )
-
 
     # -----------------------------------------------------
     # REFERENSI
@@ -1303,7 +1260,6 @@ if st.session_state.answer:
                 st.session_state.references
             )
 
-
     # -----------------------------------------------------
     # VERSI LEBIH SANTAI
     # -----------------------------------------------------
@@ -1318,7 +1274,6 @@ if st.session_state.answer:
         "Jawaban utama sudah dibuat dengan gaya natural. "
         "Fitur ini hanya pilihan tambahan."
     )
-
 
     if st.button(
         "🔄 Buat Lebih Santai",
@@ -1341,7 +1296,6 @@ if st.session_state.answer:
                         )
                     )
 
-
                     response = (
                         client.models.generate_content(
                             model=MODEL_NAME,
@@ -1349,20 +1303,17 @@ if st.session_state.answer:
                         )
                     )
 
-
                     if response and response.text:
 
                         st.session_state.natural_answer = (
                             response.text.strip()
                         )
 
-
             except Exception as e:
 
                 st.error(
                     f"Gagal membuat versi santai: {e}"
                 )
-
 
     # -----------------------------------------------------
     # HASIL VERSI SANTAI
