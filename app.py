@@ -25,19 +25,20 @@ st.set_page_config(
 
 
 # =========================================================
-# CSS
+# CSS / TAMPILAN
 # =========================================================
 
 st.markdown(
     """
     <style>
+
     .main {
         background-color: #f7f9fc;
     }
 
     .hero {
-        padding: 28px 24px;
-        border-radius: 18px;
+        padding: 30px 24px;
+        border-radius: 20px;
         margin-bottom: 22px;
         background: linear-gradient(135deg, #0d6efd, #4f8cff);
         color: white;
@@ -47,7 +48,7 @@ st.markdown(
 
     .hero h1 {
         margin: 0;
-        font-size: 34px;
+        font-size: 36px;
         font-weight: 700;
     }
 
@@ -58,24 +59,17 @@ st.markdown(
     }
 
     .info-box {
-        padding: 13px 16px;
+        padding: 14px 16px;
         border-radius: 12px;
         background: #eef5ff;
         border-left: 4px solid #0d6efd;
-        margin: 10px 0 18px 0;
+        margin-bottom: 18px;
     }
 
-    .small-note {
-        font-size: 13px;
-        color: #666;
+    .stTextArea textarea {
+        line-height: 1.6;
     }
 
-    div[data-testid="stForm"] {
-        background: white;
-        padding: 20px;
-        border-radius: 16px;
-        box-shadow: 0 4px 18px rgba(0,0,0,0.05);
-    }
     </style>
     """,
     unsafe_allow_html=True,
@@ -96,12 +90,12 @@ st.markdown(
     unsafe_allow_html=True,
 )
 
-
 st.markdown(
     """
     <div class="info-box">
-        <b>💡 Tips:</b> Upload modul jika tersedia agar jawaban lebih sesuai
-        dengan materi mata kuliah. Modul tidak wajib diupload.
+        <b>💡 Tips:</b>
+        Upload modul jika tersedia agar jawaban lebih sesuai dengan
+        materi mata kuliah. Modul bersifat opsional.
     </div>
     """,
     unsafe_allow_html=True,
@@ -109,7 +103,21 @@ st.markdown(
 
 
 # =========================================================
-# HELPER API KEY
+# SESSION STATE
+# =========================================================
+
+if "answer" not in st.session_state:
+    st.session_state.answer = ""
+
+if "references" not in st.session_state:
+    st.session_state.references = ""
+
+if "natural_answer" not in st.session_state:
+    st.session_state.natural_answer = ""
+
+
+# =========================================================
+# API KEY
 # =========================================================
 
 def get_api_key():
@@ -122,98 +130,88 @@ def get_api_key():
     return os.getenv("GOOGLE_API_KEY")
 
 
-# =========================================================
-# GEMINI CLIENT
-# =========================================================
-
 def get_client():
     api_key = get_api_key()
 
     if not api_key:
         st.error(
             "GOOGLE_API_KEY belum ditemukan. "
-            "Tambahkan GOOGLE_API_KEY pada Streamlit Secrets."
+            "Silakan masukkan API key pada Streamlit Secrets."
         )
         return None
 
     try:
         return genai.Client(api_key=api_key)
+
     except Exception as e:
-        st.error(f"Gagal membuat koneksi Gemini: {e}")
+        st.error(f"Gagal menghubungkan ke Gemini: {e}")
         return None
 
 
 # =========================================================
-# REFERENSI MATA KULIAH
+# DATA MATA KULIAH
 # =========================================================
 
 def get_course_references(kode_mk):
+    """
+    Mengambil referensi khusus berdasarkan kode mata kuliah.
+    """
+
     references = COURSE_REFERENCES.get(kode_mk, [])
 
     if not references:
         return ""
 
-    lines = []
+    result = []
 
     for i, item in enumerate(references, start=1):
+
         if isinstance(item, dict):
             ref = item.get("referensi", "")
         else:
             ref = str(item)
 
         if ref.strip():
-            lines.append(f"{i}. {ref.strip()}")
+            result.append(
+                f"{i}. {ref.strip()}"
+            )
 
-    return "\n".join(lines)
-
-
-# =========================================================
-# INFORMASI COURSE
-# =========================================================
-
-def get_course_info(kode_mk):
-    course = COURSES.get(kode_mk, {})
-
-    if isinstance(course, dict):
-        return {
-            "nama": course.get("nama", ""),
-            "sks": course.get("sks", ""),
-            "prodi": course.get("prodi", ""),
-        }
-
-    return {
-        "nama": str(course),
-        "sks": "",
-        "prodi": "",
-    }
+    return "\n".join(result)
 
 
 # =========================================================
-# EKSTRAK TEKS PDF
+# PDF TEXT EXTRACTION
 # =========================================================
 
 def extract_pdf_text(uploaded_file):
     """
     Mencoba membaca text layer dari PDF.
 
-    Fungsi ini BUKAN OCR.
-    Tujuannya hanya untuk mengetahui apakah PDF mempunyai
-    teks yang bisa diekstrak.
+    Ini bukan OCR.
+    Fungsinya untuk mengetahui apakah PDF mempunyai
+    teks yang dapat diekstrak.
 
-    PDF scan/gambar akan tetap diproses langsung oleh Gemini.
+    Jika PDF berupa scan/gambar, file tetap akan dikirim
+    langsung ke Gemini untuk dibaca secara visual.
     """
 
     try:
         uploaded_file.seek(0)
 
-        reader = PdfReader(io.BytesIO(uploaded_file.read()))
+        pdf_bytes = uploaded_file.read()
+
+        reader = PdfReader(
+            io.BytesIO(pdf_bytes)
+        )
 
         pages = []
 
         for i, page in enumerate(reader.pages):
+
             text = page.extract_text() or ""
 
             if text.strip():
+
                 pages.append(
                     f"[Halaman {i + 1}]\n{text.strip()}"
                 )
@@ -234,50 +232,45 @@ def extract_pdf_text(uploaded_file):
 # INSPEKSI PDF
 # =========================================================
 
-def inspect_uploaded_pdfs(uploaded_files):
+def inspect_pdfs(uploaded_files):
+
     results = []
 
     for uploaded_file in uploaded_files:
-        try:
-            size_mb = uploaded_file.size / (1024 * 1024)
 
-            if size_mb > MAX_PDF_SIZE_MB:
-                results.append(
-                    {
-                        "name": uploaded_file.name,
-                        "size_mb": size_mb,
-                        "status": "terlalu_besar",
-                        "text": "",
-                    }
-                )
-                continue
+        size_mb = uploaded_file.size / (
+            1024 * 1024
+        )
 
-            text = extract_pdf_text(uploaded_file)
+        if size_mb > MAX_PDF_SIZE_MB:
 
-            if len(text.strip()) > 100:
-                status = "text"
-            else:
-                status = "scan"
+            results.append({
+                "name": uploaded_file.name,
+                "status": "too_large",
+                "text": "",
+                "size_mb": size_mb,
+            })
 
-            results.append(
-                {
-                    "name": uploaded_file.name,
-                    "size_mb": size_mb,
-                    "status": status,
-                    "text": text,
-                }
-            )
+            continue
 
-        except Exception as e:
-            results.append(
-                {
-                    "name": uploaded_file.name,
-                    "size_mb": 0,
-                    "status": "error",
-                    "text": "",
-                    "error": str(e),
-                }
-            )
+        text = extract_pdf_text(
+            uploaded_file
+        )
+
+        if len(text.strip()) >= 100:
+
+            status = "text"
+
+        else:
+
+            status = "scan"
+
+        results.append({
+            "name": uploaded_file.name,
+            "status": status,
+            "text": text,
+            "size_mb": size_mb,
+        })
 
     return results
 
@@ -286,83 +279,49 @@ def inspect_uploaded_pdfs(uploaded_files):
 # UPLOAD PDF KE GEMINI
 # =========================================================
 
-def upload_pdfs_to_gemini(client, uploaded_files):
+def wait_for_file_active(
+    client,
+    gemini_file,
+    timeout=120
+):
     """
-    Upload PDF ke Gemini Files API.
-
-    Ini memungkinkan Gemini membaca:
-    - PDF biasa
-    - PDF dengan text layer
-    - PDF hasil scan/gambar
-    """
-
-    gemini_files = []
-
-    for uploaded_file in uploaded_files:
-
-        if uploaded_file.size > MAX_PDF_SIZE_MB * 1024 * 1024:
-            raise ValueError(
-                f"File '{uploaded_file.name}' lebih dari "
-                f"{MAX_PDF_SIZE_MB} MB."
-            )
-
-        try:
-            uploaded_file.seek(0)
-
-            gemini_file = client.files.upload(
-                file=uploaded_file,
-                config={
-                    "mime_type": "application/pdf"
-                }
-            )
-
-            # Beberapa file dapat membutuhkan waktu untuk diproses.
-            # Kita cek statusnya jika tersedia.
-            gemini_file = wait_for_file_active(
-                client,
-                gemini_file
-            )
-
-            gemini_files.append(gemini_file)
-
-        except Exception as e:
-            raise RuntimeError(
-                f"Gagal mengupload '{uploaded_file.name}': {e}"
-            )
-
-    return gemini_files
-
-
-# =========================================================
-# MENUNGGU FILE AKTIF
-# =========================================================
-
-def wait_for_file_active(client, gemini_file, timeout=120):
-    """
-    Menunggu file Gemini sampai siap digunakan.
+    Menunggu file selesai diproses Gemini.
     """
 
     start_time = time.time()
 
     while True:
 
-        state = getattr(gemini_file, "state", None)
+        state = getattr(
+            gemini_file,
+            "state",
+            None
+        )
 
         if not state:
             return gemini_file
 
-        state_name = getattr(state, "name", str(state))
+        state_name = getattr(
+            state,
+            "name",
+            str(state)
+        )
 
         if state_name == "ACTIVE":
             return gemini_file
 
-        if state_name not in ("PROCESSING", "STATE_UNSPECIFIED"):
+        if state_name not in (
+            "PROCESSING",
+            "STATE_UNSPECIFIED"
+        ):
             raise RuntimeError(
-                f"Status file '{getattr(gemini_file, 'name', '')}': "
-                f"{state_name}"
+                f"Status file Gemini: {state_name}"
             )
 
-        if time.time() - start_time > timeout:
+        if (
+            time.time() - start_time
+            > timeout
+        ):
             raise TimeoutError(
                 "PDF terlalu lama diproses oleh Gemini."
             )
@@ -374,107 +333,183 @@ def wait_for_file_active(client, gemini_file, timeout=120):
         )
 
 
+def upload_pdfs_to_gemini(
+    client,
+    uploaded_files
+):
+
+    gemini_files = []
+
+    for uploaded_file in uploaded_files:
+
+        if uploaded_file.size > (
+            MAX_PDF_SIZE_MB * 1024 * 1024
+        ):
+            raise ValueError(
+                f"File '{uploaded_file.name}' "
+                f"melebihi {MAX_PDF_SIZE_MB} MB."
+            )
+
+        uploaded_file.seek(0)
+
+        try:
+
+            gemini_file = client.files.upload(
+                file=uploaded_file,
+                config={
+                    "mime_type": "application/pdf"
+                }
+            )
+
+            gemini_file = wait_for_file_active(
+                client,
+                gemini_file
+            )
+
+            gemini_files.append(
+                gemini_file
+            )
+
+        except Exception as e:
+
+            raise RuntimeError(
+                f"Gagal memproses "
+                f"'{uploaded_file.name}': {e}"
+            )
+
+    return gemini_files
+
+
 # =========================================================
-# FORMAT INFO MODUL
+# INFO MODUL
 # =========================================================
 
 def build_module_info(inspections):
-    if not inspections:
-        return "Tidak ada modul PDF yang diupload."
 
-    lines = []
+    if not inspections:
+
+        return (
+            "Tidak ada modul PDF yang diupload."
+        )
+
+    result = []
 
     for item in inspections:
 
         if item["status"] == "text":
-            lines.append(
-                f"- {item['name']}: PDF memiliki text layer."
+
+            result.append(
+                f"- {item['name']}: "
+                "text layer berhasil dibaca."
             )
 
         elif item["status"] == "scan":
-            lines.append(
-                f"- {item['name']}: kemungkinan PDF scan/gambar. "
-                f"Gunakan kemampuan pembacaan dokumen visual Gemini."
+
+            result.append(
+                f"- {item['name']}: "
+                "kemungkinan PDF scan/gambar. "
+                "Baca langsung menggunakan kemampuan "
+                "pemahaman dokumen visual."
             )
 
-        elif item["status"] == "terlalu_besar":
-            lines.append(
-                f"- {item['name']}: dilewati karena melebihi batas ukuran."
+        elif item["status"] == "too_large":
+
+            result.append(
+                f"- {item['name']}: "
+                "melebihi batas ukuran dan tidak digunakan."
             )
 
-        else:
-            lines.append(
-                f"- {item['name']}: tidak dapat diperiksa secara lokal."
-            )
-
-    return "\n".join(lines)
+    return "\n".join(result)
 
 
 # =========================================================
-# STYLE INSTRUCTIONS
+# GAYA PENULISAN
 # =========================================================
 
 def get_style_instruction(style):
+
     if style == "Natural seperti mahasiswa":
+
         return """
-Tulis seperti mahasiswa S1 yang sudah membaca materi lalu
-menjelaskan kembali dengan bahasa sendiri.
+Tulis seperti mahasiswa S1 yang sudah membaca materi,
+memahami pertanyaan, kemudian menjelaskan kembali
+dengan bahasanya sendiri.
 
-Gunakan bahasa Indonesia yang natural dan wajar untuk forum Tuton.
+Gunakan bahasa Indonesia yang natural dan wajar untuk
+forum diskusi Tuton.
 
-Hindari:
-- bahasa jurnal yang terlalu kaku;
-- kalimat yang terlalu sempurna;
-- paragraf yang semuanya memiliki pola sama;
-- terlalu banyak istilah akademik;
-- pembukaan yang terlalu formal;
-- pengulangan kesimpulan;
-- penggunaan kata transisi yang sama berulang-ulang.
+Jangan membuat tulisan terasa seperti artikel jurnal.
 
-Variasikan panjang kalimat secara wajar.
-Gunakan "menurut saya", "bagi saya", atau "dari pemahaman saya"
-jika memang sesuai konteks, tetapi jangan dipaksakan.
+Variasikan panjang kalimat secara alami.
 
-Jawaban harus tetap akademis dan sopan.
+Jangan menggunakan pola pembukaan dan penutup yang
+terlalu kaku.
+
+Gunakan "menurut saya", "bagi saya", atau
+"dari pemahaman saya" jika memang sesuai konteks,
+tetapi jangan dipaksakan.
+
+Hindari penggunaan kata penghubung yang sama berulang-ulang,
+seperti:
+- selain itu
+- oleh karena itu
+- dengan demikian
+- hal ini menunjukkan
+- tidak dapat dipungkiri
+
+Kata-kata tersebut boleh digunakan jika memang diperlukan,
+tetapi jangan digunakan secara otomatis.
+
+Natural bukan berarti membuat kesalahan tata bahasa.
+Tetap gunakan bahasa yang baik dan sopan.
 """
 
-    if style == "Akademik":
+    elif style == "Akademik":
+
         return """
-Gunakan bahasa akademik yang jelas, sistematis, dan sopan,
-tetapi tetap cocok untuk jawaban diskusi mahasiswa S1.
-Hindari bahasa jurnal yang terlalu berat.
+Gunakan bahasa akademik yang jelas, sistematis,
+dan sopan untuk mahasiswa S1.
+
+Tetap hindari bahasa yang terlalu kaku seperti artikel jurnal.
 """
 
-    return """
+    else:
+
+        return """
 Gunakan bahasa yang sederhana, langsung, dan padat.
-Fokus pada inti pertanyaan tanpa mengurangi ketepatan konsep.
+
+Fokus pada inti pertanyaan dan jangan memperpanjang
+jawaban dengan penjelasan yang tidak diperlukan.
 """
 
 
 # =========================================================
-# LENGTH INSTRUCTION
+# PANJANG JAWABAN
 # =========================================================
 
 def get_length_instruction(length):
+
     if length == "Pendek":
+
         return """
-Panjang jawaban sekitar 180–250 kata.
-Prioritaskan inti pembahasan dan jangan memperpanjang penjelasan.
+Target sekitar 180–250 kata.
 """
 
-    if length == "Panjang":
+    elif length == "Panjang":
+
         return """
-Panjang jawaban sekitar 450–650 kata.
-Berikan pembahasan yang cukup mendalam dengan contoh jika relevan.
+Target sekitar 450–650 kata.
 """
 
-    return """
-Panjang jawaban sekitar 280–400 kata.
+    else:
+
+        return """
+Target sekitar 280–400 kata.
 """
 
 
 # =========================================================
-# PROMPT UTAMA V2
+# PROMPT UTAMA
 # =========================================================
 
 def build_prompt(
@@ -491,448 +526,588 @@ def build_prompt(
     module_text,
     static_references,
 ):
-    style_instruction = get_style_instruction(style)
-    length_instruction = get_length_instruction(length)
+
+    style_instruction = get_style_instruction(
+        style
+    )
+
+    length_instruction = get_length_instruction(
+        length
+    )
 
     if module_text:
-        module_text = module_text[:MAX_EXTRACTED_TEXT]
 
-        extracted_context = f"""
-Berikut sebagian teks yang berhasil diekstrak dari PDF:
+        module_context = f"""
+TEKS MODUL YANG BERHASIL DIEKSTRAK:
 
---- MULAI TEKS PDF ---
-{module_text}
---- AKHIR TEKS PDF ---
+--- MULAI MODUL ---
+{module_text[:MAX_EXTRACTED_TEXT]}
+--- SELESAI MODUL ---
 """
+
     else:
-        extracted_context = """
-Tidak ada text layer yang berhasil diekstrak dari PDF.
-Jika PDF terlampir berupa scan/gambar, baca langsung isi halaman
-PDF melalui input dokumen yang diberikan.
+
+        module_context = """
+Tidak ada teks modul yang berhasil diekstrak.
+
+Jika PDF yang diberikan berupa scan/gambar,
+gunakan file PDF yang terlampir sebagai sumber utama
+dan baca isi halaman secara visual.
 """
 
     if static_references:
+
         reference_context = f"""
-Daftar referensi mata kuliah yang tersedia:
+REFERENSI MATA KULIAH YANG TERSEDIA:
 
 {static_references}
 """
+
     else:
+
         reference_context = """
-Belum ada referensi statis yang tersedia untuk mata kuliah ini.
-Jangan membuat referensi fiktif.
+Tidak tersedia referensi statis untuk mata kuliah ini.
+Jangan mengarang referensi.
 """
 
-    return f"""
-Kamu adalah asisten akademik untuk membantu mahasiswa Universitas Terbuka
-menyusun draft jawaban diskusi Tuton.
+    prompt = f"""
+Kamu adalah asisten akademik untuk membantu mahasiswa
+Universitas Terbuka menyusun draft jawaban diskusi Tuton.
 
-DATA MAHASISWA
-Nama: {nama}
-Program Studi: {prodi}
-UPBJJ: {upbjj}
+==================================================
+IDENTITAS MAHASISWA
+==================================================
 
-DATA MATA KULIAH
-Kode: {kode_mk}
-Mata Kuliah: {mata_kuliah}
-SKS: {sks}
+Nama:
+{nama}
 
-PERTANYAAN DISKUSI
+Program Studi:
+{prodi}
+
+UPBJJ:
+{upbjj}
+
+
+==================================================
+MATA KULIAH
+==================================================
+
+Kode:
+{kode_mk}
+
+Nama:
+{mata_kuliah}
+
+SKS:
+{sks}
+
+
+==================================================
+SOAL DISKUSI
+==================================================
+
 {pertanyaan}
 
+
+==================================================
 INFORMASI MODUL
+==================================================
+
 {module_info}
 
-{extracted_context}
+{module_context}
 
 {reference_context}
 
-==================================================
-TUGAS UTAMA
-==================================================
-
-Susun jawaban diskusi yang benar-benar menjawab pertanyaan.
-
-Prioritas sumber:
-1. Modul PDF yang diberikan.
-2. Referensi mata kuliah yang tersedia.
-3. Pengetahuan umum yang relevan apabila materi tidak cukup.
-
-Jika PDF diberikan:
-- baca isi PDF dengan teliti;
-- cari bagian yang paling relevan dengan pertanyaan;
-- jika PDF merupakan scan/gambar, baca isi halaman secara visual;
-- jangan mengatakan bahwa PDF tidak bisa dibaca hanya karena text layer
-  tidak tersedia;
-- jangan mencampurkan materi dari mata kuliah lain.
-
-Jika pertanyaan meminta pendapat:
-- berikan analisis berdasarkan materi;
-- gunakan sudut pandang mahasiswa secara wajar;
-- jangan mengarang pengalaman pribadi mahasiswa.
-
-Jika pertanyaan meminta contoh:
-- gunakan contoh yang sederhana dan relevan;
-- jangan membuat data statistik atau fakta khusus yang tidak memiliki dasar.
 
 ==================================================
-NATURAL STUDENT WRITING ENGINE
+CARA MENJAWAB
 ==================================================
 
-Tujuan utama adalah menghasilkan jawaban yang natural, spesifik terhadap
-pertanyaan, dan sesuai konteks mahasiswa.
+Pertama, pahami terlebih dahulu apa yang sebenarnya
+diminta oleh soal.
+
+Jangan menjawab secara umum jika pertanyaan meminta
+hal yang spesifik.
+
+Gunakan materi mata kuliah yang sesuai.
+
+Jika modul tersedia, prioritaskan modul tersebut.
+
+Jika terdapat beberapa PDF, cari bagian yang paling
+relevan dan jangan mencampurkan materi dari mata kuliah
+lain.
+
+Jika PDF merupakan scan atau gambar, baca langsung
+halaman PDF tersebut.
+
+Jika soal meminta pendapat, berikan pendapat berdasarkan
+pemahaman terhadap materi.
+
+Jangan mengarang pengalaman pribadi mahasiswa.
+
+Jika soal meminta contoh, gunakan contoh yang masuk akal
+dan relevan dengan pembahasan.
+
+==================================================
+GAYA PENULISAN
+==================================================
 
 {style_instruction}
 
 {length_instruction}
 
-Jangan menulis dengan pola artikel AI yang terlalu umum.
-
-Hindari secara berlebihan frasa seperti:
-- "Dalam era digital yang semakin berkembang..."
-- "Tidak dapat dipungkiri bahwa..."
-- "Pada akhirnya..."
-- "Dengan demikian..."
-- "Oleh karena itu..."
-- "Hal ini menunjukkan bahwa..."
-- "Selain itu..." berulang kali.
-
-Bukan berarti kata-kata tersebut dilarang, tetapi jangan digunakan
-secara otomatis atau berulang.
-
-Jangan membuat:
-- judul yang tidak diperlukan;
-- daftar poin jika soal lebih cocok dijawab dalam paragraf;
-- kesimpulan yang hanya mengulang isi jawaban;
-- pembukaan seperti artikel ilmiah;
-- kalimat yang terdengar seperti definisi buku jika dapat dijelaskan
-  dengan bahasa mahasiswa.
-
-Tulisan harus terasa seperti mahasiswa yang memahami materi lalu
-menjelaskannya kembali dengan bahasanya sendiri.
-
-Jangan sengaja membuat kesalahan ejaan atau tata bahasa.
-Natural bukan berarti dibuat buruk.
 
 ==================================================
-AKURASI AKADEMIK
+NATURAL STUDENT WRITING
 ==================================================
 
-- Jangan mengarang fakta.
-- Jangan mengarang nomor modul.
-- Jangan mengarang halaman.
-- Jangan mengarang nama penulis.
-- Jangan mengarang judul buku atau jurnal.
-- Jangan membuat DOI palsu.
-- Jangan mengklaim suatu informasi berasal dari modul jika tidak ada
-  dasar yang jelas.
-- Jika lokasi halaman tidak dapat dipastikan, jangan membuat nomor halaman.
-- Jika referensi tidak tersedia atau tidak dapat dipastikan, jangan
-  mengada-adakannya.
+Jawaban harus terasa seperti mahasiswa yang sudah membaca
+materi kemudian menjelaskan kembali menggunakan bahasanya
+sendiri.
+
+Jangan membuat semua paragraf memiliki struktur yang sama.
+
+Jangan membuat setiap kalimat terlalu panjang.
+
+Jangan terlalu banyak menggunakan istilah akademik jika
+bahasa sederhana sudah cukup.
+
+Jangan membuat pembukaan seperti:
+
+"Di era perkembangan teknologi yang semakin pesat..."
+
+kecuali memang relevan dengan soal.
+
+Jangan menggunakan:
+
+"Sebagai mahasiswa, kita harus..."
+
+jika tidak diperlukan.
+
+Jangan mengulang pertanyaan dalam bentuk paragraf.
+
+Jangan membuat kesimpulan yang hanya mengulang semua
+isi jawaban.
+
+Jangan membuat tulisan sengaja salah ejaan atau tata bahasa.
 
 ==================================================
-STRUKTUR OUTPUT
+AKURASI
 ==================================================
 
-Tampilkan hanya:
+Jangan mengarang:
+
+- fakta
+- angka
+- statistik
+- nama tokoh
+- nama buku
+- jurnal
+- DOI
+- nomor modul
+- nomor halaman
+- kutipan
+- referensi
+
+Jika nomor halaman tidak dapat dipastikan dari dokumen,
+jangan mencantumkannya.
+
+Jika referensi tidak tersedia atau tidak dapat dipastikan,
+jangan membuatnya sendiri.
+
+==================================================
+OUTPUT
+==================================================
+
+Gunakan format:
 
 JAWABAN TUTON
 
-[isi jawaban]
+[Jawaban]
 
 REFERENSI
 
-1. [referensi yang benar-benar digunakan]
+[Referensi yang benar-benar digunakan]
 
-Gunakan referensi yang memang tersedia atau dapat dipastikan.
-Tidak perlu memasukkan banyak referensi hanya agar terlihat akademis.
+Tidak perlu menjelaskan proses berpikir.
 
-Jangan menambahkan komentar tentang proses AI.
-Jangan menjelaskan bahwa kamu sedang mengikuti prompt.
+Tidak perlu menjelaskan bahwa kamu adalah AI.
+
+Tidak perlu menambahkan catatan kepada mahasiswa.
+
+Jawaban harus langsung berupa draft yang dapat dibaca
+dan diperiksa oleh mahasiswa sebelum diposting.
 """
 
-
-# =========================================================
-# PARSE JAWABAN
-# =========================================================
-
-def split_answer_and_references(text):
-    if not text:
-        return "", ""
-
-    cleaned = text.strip()
-
-    # Bersihkan beberapa kemungkinan heading
-    cleaned = cleaned.replace("**JAWABAN TUTON**", "JAWABAN TUTON")
-    cleaned = cleaned.replace("**REFERENSI**", "REFERENSI")
-
-    if "REFERENSI" in cleaned:
-        answer_part, references_part = cleaned.split(
-            "REFERENSI",
-            1
-        )
-
-        answer_part = answer_part.replace(
-            "JAWABAN TUTON",
-            "",
-            1
-        ).strip()
-
-        references_part = references_part.strip()
-
-        return answer_part, references_part
-
-    cleaned = cleaned.replace(
-        "JAWABAN TUTON",
-        "",
-        1
-    ).strip()
-
-    return cleaned, ""
+    return prompt
 
 
 # =========================================================
-# PROMPT PENYEMPURNAAN NATURAL
-# =========================================================
-
-def build_natural_prompt(answer):
-    return f"""
-Teks berikut adalah draft jawaban diskusi mahasiswa:
-
---- DRAFT ---
-{answer}
---- AKHIR DRAFT ---
-
-Tugas kamu adalah membuat versi yang lebih natural dan nyaman dibaca
-seperti tulisan mahasiswa S1.
-
-Pertahankan:
-- makna;
-- fakta;
-- konsep;
-- contoh;
-- pendapat;
-- panjang yang kurang lebih sama.
-
-Jangan menambahkan fakta baru.
-
-Perbaiki jika ada:
-- kalimat terlalu kaku;
-- pola kalimat terlalu seragam;
-- transisi terlalu banyak;
-- pengulangan;
-- bahasa yang terlalu seperti artikel ilmiah.
-
-Jangan sengaja membuat kesalahan tata bahasa atau ejaan.
-Jangan membuat tulisan menjadi terlalu santai.
-
-Hasil harus tetap sopan dan cocok diposting pada forum Tuton.
-
-Tampilkan hanya versi hasil perbaikannya.
-"""
-
-
-# =========================================================
-# GENERATE JAWABAN
+# GENERATE DENGAN GEMINI
 # =========================================================
 
 def generate_answer(
     client,
     prompt,
-    gemini_files=None,
+    gemini_files=None
 ):
+
     contents = [prompt]
 
     if gemini_files:
-        # File diletakkan setelah prompt agar konteks instruksi tetap jelas.
+
         for gemini_file in gemini_files:
-            contents.append(gemini_file)
+
+            contents.append(
+                gemini_file
+            )
 
     response = client.models.generate_content(
         model=MODEL_NAME,
         contents=contents,
     )
 
-    if not response or not getattr(response, "text", None):
+    if not response:
+
         raise RuntimeError(
-            "Gemini tidak mengembalikan jawaban."
+            "Gemini tidak memberikan respons."
         )
 
-    return response.text.strip()
+    answer = getattr(
+        response,
+        "text",
+        None
+    )
+
+    if not answer:
+
+        raise RuntimeError(
+            "Gemini tidak mengembalikan teks jawaban."
+        )
+
+    return answer.strip()
 
 
 # =========================================================
-# FORM INPUT
+# PARSE OUTPUT
+# =========================================================
+
+def split_answer_and_references(text):
+
+    if not text:
+        return "", ""
+
+    text = text.strip()
+
+    text = text.replace(
+        "**JAWABAN TUTON**",
+        "JAWABAN TUTON"
+    )
+
+    text = text.replace(
+        "**REFERENSI**",
+        "REFERENSI"
+    )
+
+    if "REFERENSI" in text:
+
+        parts = text.split(
+            "REFERENSI",
+            1
+        )
+
+        answer = parts[0]
+
+        references = parts[1]
+
+        answer = answer.replace(
+            "JAWABAN TUTON",
+            "",
+            1
+        ).strip()
+
+        return (
+            answer,
+            references.strip()
+        )
+
+    answer = text.replace(
+        "JAWABAN TUTON",
+        "",
+        1
+    ).strip()
+
+    return answer, ""
+
+
+# =========================================================
+# PROMPT VERSI LEBIH SANTAI
+# =========================================================
+
+def build_natural_prompt(answer):
+
+    return f"""
+Berikut draft jawaban diskusi mahasiswa:
+
+--- MULAI DRAFT ---
+
+{answer}
+
+--- SELESAI DRAFT ---
+
+Buat versi yang sedikit lebih natural dan santai,
+tetapi tetap sopan dan sesuai untuk forum Tuton.
+
+Pertahankan:
+
+- makna
+- konsep
+- fakta
+- contoh
+- pendapat
+- inti jawaban
+
+Jangan menambahkan fakta baru.
+
+Jangan mengubah kesimpulan menjadi sesuatu yang berbeda.
+
+Perbaiki jika ada kalimat yang:
+- terlalu kaku;
+- terlalu panjang;
+- terlalu berulang;
+- terlalu seperti artikel jurnal;
+- menggunakan transisi secara berlebihan.
+
+Gunakan bahasa mahasiswa S1 yang wajar.
+
+Jangan sengaja membuat kesalahan ejaan atau tata bahasa.
+
+Tampilkan hanya hasil akhirnya.
+"""
+
+
+# =========================================================
+# FORM
 # =========================================================
 
 with st.form("tuton_form"):
 
-    st.subheader("📝 Data Mahasiswa")
+    st.subheader("👤 Data Mahasiswa")
 
-    col1, col2 = st.columns(2)
+    nama = st.text_input(
+        "Nama lengkap",
+        placeholder="Contoh: Ashad Bayu Saputra"
+    )
 
-    with col1:
-        nama = st.text_input(
-            "Nama lengkap",
-            placeholder="Contoh: Ashad Bayu Saputra"
-        )
-
-    with col2:
-        prodi = st.text_input(
-            "Program Studi",
-            value="S1 Sistem Informasi"
-        )
+    prodi = st.text_input(
+        "Program Studi",
+        value="S1 Sistem Informasi"
+    )
 
     upbjj = st.text_input(
         "UPBJJ",
         placeholder="Contoh: Palangkaraya"
     )
 
+
     st.subheader("📚 Mata Kuliah")
 
-    course_options = list(COURSES.keys())
 
-    if not course_options:
-        st.error("COURSES belum berisi data mata kuliah.")
-        st.stop()
+    # -----------------------------------------------------
+    # DROPDOWN KODE MK
+    # -----------------------------------------------------
+
+    course_options = list(
+        COURSES.keys()
+    )
 
     kode_mk = st.selectbox(
         "Kode Mata Kuliah",
-        options=course_options
+        options=course_options,
+
+        format_func=lambda kode: (
+            f"{kode} — {COURSES[kode]['nama']}"
+        )
     )
 
-    selected_course = get_course_info(kode_mk)
+
+    # -----------------------------------------------------
+    # AMBIL DATA BERDASARKAN KODE YANG DIPILIH
+    # -----------------------------------------------------
+
+    selected_course = COURSES[kode_mk]
 
     mata_kuliah = selected_course["nama"]
+
     sks = selected_course["sks"]
 
+
     st.info(
-        f"**Mata Kuliah:** {mata_kuliah}  \n"
-        f"**SKS:** {sks}"
+        f"📖 **{mata_kuliah}**  •  **{sks} SKS**"
     )
+
+
+    st.subheader("📝 Pertanyaan Diskusi")
 
     pertanyaan = st.text_area(
-        "Soal diskusi",
-        height=180,
-        placeholder="Tempelkan soal diskusi Tuton di sini..."
+        "Masukkan soal diskusi",
+        height=190,
+        placeholder=(
+            "Tempelkan soal diskusi Tuton di sini..."
+        )
     )
 
-    st.subheader("📄 Modul")
+
+    st.subheader("📄 Modul Tuton")
 
     modul = st.file_uploader(
         "Upload modul PDF jika tersedia",
         type=["pdf"],
         accept_multiple_files=True,
+
         help=(
-            "Opsional. Bisa berupa PDF biasa maupun PDF hasil scan. "
+            "Opsional. Bisa PDF biasa maupun PDF hasil scan. "
             "Maksimal 50 MB per file."
-        ),
+        )
     )
 
+
     if modul:
+
         st.caption(
-            f"{len(modul)} file PDF dipilih."
+            f"📎 {len(modul)} file PDF dipilih"
         )
+
 
     st.subheader("✍️ Gaya Jawaban")
 
     style = st.selectbox(
-        "Gaya penulisan",
+        "Pilih gaya penulisan",
+
         [
             "Natural seperti mahasiswa",
             "Akademik",
             "Ringkas dan padat",
         ],
-        index=0,
+
+        index=0
     )
+
 
     length = st.selectbox(
         "Panjang jawaban",
+
         [
             "Pendek",
             "Sedang",
             "Panjang",
         ],
-        index=1,
+
+        index=1
     )
+
 
     submitted = st.form_submit_button(
         "🚀 Buat Jawaban Tuton",
-        use_container_width=True,
+        use_container_width=True
     )
 
 
 # =========================================================
-# PROSES GENERATE
+# PROSES
 # =========================================================
 
 if submitted:
 
     if not nama.strip():
-        st.warning("Silakan isi nama lengkap.")
+
+        st.warning(
+            "Silakan isi nama lengkap."
+        )
+
         st.stop()
 
+
     if not pertanyaan.strip():
-        st.warning("Silakan masukkan soal diskusi.")
+
+        st.warning(
+            "Silakan masukkan soal diskusi."
+        )
+
         st.stop()
+
 
     client = get_client()
 
     if not client:
         st.stop()
 
+
     try:
 
         # -------------------------------------------------
-        # INSPEKSI PDF
+        # INSPEKSI MODUL
         # -------------------------------------------------
 
         inspections = []
 
         if modul:
-            with st.spinner("🔎 Memeriksa modul PDF..."):
-                inspections = inspect_uploaded_pdfs(modul)
 
-            invalid_files = [
-                x["name"]
-                for x in inspections
-                if x["status"] == "terlalu_besar"
+            with st.spinner(
+                "🔎 Memeriksa modul..."
+            ):
+
+                inspections = inspect_pdfs(
+                    modul
+                )
+
+
+            too_large = [
+                item["name"]
+                for item in inspections
+                if item["status"] == "too_large"
             ]
 
-            if invalid_files:
+
+            if too_large:
+
                 st.error(
                     "File berikut melebihi batas 50 MB:\n\n"
                     + "\n".join(
                         f"- {name}"
-                        for name in invalid_files
+                        for name in too_large
                     )
                 )
+
                 st.stop()
 
+
             with st.expander(
-                "📄 Status modul yang diupload",
+                "📄 Status modul",
                 expanded=False
             ):
+
                 for item in inspections:
 
                     if item["status"] == "text":
+
                         st.success(
-                            f"✅ {item['name']} — text layer terdeteksi"
+                            f"✅ {item['name']} — "
+                            "teks berhasil dibaca"
                         )
 
                     elif item["status"] == "scan":
+
                         st.info(
-                            f"🖼️ {item['name']} — kemungkinan PDF scan, "
-                            f"akan dibaca langsung oleh Gemini"
+                            f"🖼️ {item['name']} — "
+                            "terdeteksi seperti PDF scan. "
+                            "Akan dibaca langsung oleh Gemini."
                         )
 
-                    else:
-                        st.warning(
-                            f"⚠️ {item['name']}"
-                        )
 
         # -------------------------------------------------
-        # UPLOAD KE GEMINI
+        # UPLOAD PDF KE GEMINI
         # -------------------------------------------------
 
         gemini_files = []
@@ -942,87 +1117,138 @@ if submitted:
             with st.spinner(
                 "📤 Mengirim modul ke Gemini..."
             ):
-                gemini_files = upload_pdfs_to_gemini(
-                    client,
-                    modul
+
+                gemini_files = (
+                    upload_pdfs_to_gemini(
+                        client,
+                        modul
+                    )
                 )
 
+
         # -------------------------------------------------
-        # GABUNG TEKS PDF YANG BISA DIEKSTRAK
+        # GABUNG TEKS YANG BERHASIL DIEKSTRAK
         # -------------------------------------------------
 
-        all_module_text = []
+        extracted_texts = []
 
         for item in inspections:
+
             if item.get("text"):
-                all_module_text.append(
-                    f"===== {item['name']} =====\n"
-                    f"{item['text']}"
+
+                extracted_texts.append(
+                    f"""
+===== {item['name']} =====
+
+{item['text']}
+"""
                 )
 
+
         module_text = "\n\n".join(
-            all_module_text
+            extracted_texts
         )
+
+
+        # -------------------------------------------------
+        # INFO MODUL
+        # -------------------------------------------------
 
         module_info = build_module_info(
             inspections
         )
 
-        static_references = get_course_references(
-            kode_mk
+
+        # -------------------------------------------------
+        # REFERENSI
+        # -------------------------------------------------
+
+        static_references = (
+            get_course_references(
+                kode_mk
+            )
         )
+
 
         # -------------------------------------------------
         # BUILD PROMPT
         # -------------------------------------------------
 
         prompt = build_prompt(
+
             nama=nama.strip(),
+
             prodi=prodi.strip(),
+
             upbjj=upbjj.strip(),
+
             kode_mk=kode_mk,
+
             mata_kuliah=mata_kuliah,
+
             sks=sks,
+
             pertanyaan=pertanyaan.strip(),
+
             style=style,
+
             length=length,
+
             module_info=module_info,
+
             module_text=module_text,
+
             static_references=static_references,
         )
+
 
         # -------------------------------------------------
         # GENERATE
         # -------------------------------------------------
 
         with st.spinner(
-            "🧠 Menganalisis soal dan menyusun jawaban..."
+            "🧠 Memahami soal dan menyusun jawaban..."
         ):
+
             raw_answer = generate_answer(
                 client,
                 prompt,
                 gemini_files
             )
 
-        answer, references = split_answer_and_references(
-            raw_answer
+
+        # -------------------------------------------------
+        # PARSE
+        # -------------------------------------------------
+
+        answer, references = (
+            split_answer_and_references(
+                raw_answer
+            )
         )
+
 
         if not answer:
             answer = raw_answer
 
-        # Simpan hasil
-        st.session_state["answer"] = answer
-        st.session_state["references"] = references
-        st.session_state["kode_mk"] = kode_mk
-        st.session_state["mata_kuliah"] = mata_kuliah
 
-        # Reset hasil natural lama
-        st.session_state["natural_answer"] = ""
+        # -------------------------------------------------
+        # SIMPAN
+        # -------------------------------------------------
+
+        st.session_state.answer = answer
+
+        st.session_state.references = (
+            references
+        )
+
+        st.session_state.natural_answer = ""
+
 
         st.success(
             "✅ Jawaban berhasil dibuat."
         )
+
 
     except Exception as e:
 
@@ -1030,58 +1256,69 @@ if submitted:
             "❌ Terjadi kesalahan saat membuat jawaban."
         )
 
-        st.code(
-            str(e),
-            language="text"
-        )
+        with st.expander(
+            "Detail error"
+        ):
+
+            st.code(
+                str(e),
+                language="text"
+            )
 
 
 # =========================================================
-# HASIL JAWABAN
+# TAMPILKAN HASIL
 # =========================================================
 
-if st.session_state.get("answer"):
+if st.session_state.answer:
 
     st.divider()
 
     st.subheader("💬 Jawaban Tuton")
 
+
     st.text_area(
         "Hasil jawaban",
-        value=st.session_state["answer"],
+
+        value=st.session_state.answer,
+
         height=430,
-        key="answer_display",
+
+        key="answer_display"
     )
+
 
     # -----------------------------------------------------
     # REFERENSI
     # -----------------------------------------------------
 
-    references = st.session_state.get(
-        "references",
-        ""
-    )
-
-    if references:
+    if st.session_state.references:
 
         with st.expander(
             "📚 Referensi",
             expanded=True
         ):
-            st.text(references)
+
+            st.text(
+                st.session_state.references
+            )
+
 
     # -----------------------------------------------------
-    # NATURAL VERSION
+    # VERSI LEBIH SANTAI
     # -----------------------------------------------------
 
     st.divider()
 
-    st.subheader("✨ Penyempurnaan Gaya")
+    st.subheader(
+        "✨ Mau dibuat sedikit lebih santai?"
+    )
 
     st.caption(
-        "Jawaban pertama sudah dibuat dengan gaya natural. "
-        "Gunakan tombol ini hanya jika ingin bahasa sedikit lebih santai."
+        "Jawaban utama sudah dibuat dengan gaya natural. "
+        "Fitur ini hanya pilihan tambahan."
     )
+
 
     if st.button(
         "🔄 Buat Lebih Santai",
@@ -1098,44 +1335,54 @@ if st.session_state.get("answer"):
                     "✍️ Menyesuaikan gaya tulisan..."
                 ):
 
-                    natural_prompt = build_natural_prompt(
-                        st.session_state["answer"]
+                    natural_prompt = (
+                        build_natural_prompt(
+                            st.session_state.answer
+                        )
                     )
 
-                    response = client.models.generate_content(
-                        model=MODEL_NAME,
-                        contents=natural_prompt,
+
+                    response = (
+                        client.models.generate_content(
+                            model=MODEL_NAME,
+                            contents=natural_prompt,
+                        )
                     )
 
-                    natural_answer = (
-                        response.text.strip()
-                        if response and response.text
-                        else ""
-                    )
 
-                    if natural_answer:
-                        st.session_state[
-                            "natural_answer"
-                        ] = natural_answer
+                    if response and response.text:
+
+                        st.session_state.natural_answer = (
+                            response.text.strip()
+                        )
+
 
             except Exception as e:
 
                 st.error(
-                    f"Gagal membuat versi lebih santai: {e}"
+                    f"Gagal membuat versi santai: {e}"
                 )
 
-    if st.session_state.get("natural_answer"):
+
+    # -----------------------------------------------------
+    # HASIL VERSI SANTAI
+    # -----------------------------------------------------
+
+    if st.session_state.natural_answer:
 
         st.text_area(
             "Versi lebih santai",
-            value=st.session_state["natural_answer"],
+
+            value=st.session_state.natural_answer,
+
             height=430,
-            key="natural_answer_display",
+
+            key="natural_answer_display"
         )
 
         st.caption(
-            "Silakan baca dan sesuaikan kembali dengan pemahaman "
-            "serta gaya tulisan Anda sebelum diposting."
+            "Baca dan sesuaikan kembali dengan pemahaman "
+            "Anda sebelum digunakan."
         )
 
 
@@ -1146,6 +1393,6 @@ if st.session_state.get("answer"):
 st.divider()
 
 st.caption(
-    "🎓 Tuton AI — Gunakan sebagai alat bantu belajar dan penyusunan draft. "
-    "Periksa kembali isi, fakta, dan referensi sebelum digunakan."
+    "🎓 Tuton AI — Alat bantu penyusunan draft jawaban. "
+    "Periksa kembali isi dan referensi sebelum digunakan."
 )
