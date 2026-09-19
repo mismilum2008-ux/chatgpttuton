@@ -13,7 +13,7 @@ from references import COURSE_REFERENCES
 # KONFIGURASI
 # =========================================================
 
-MODEL_NAME = "gemini-3.8-flash"
+MODEL_NAME = "gemini-3.6-flash"
 MAX_PDF_SIZE_MB = 50
 MAX_EXTRACTED_TEXT = 90000
 
