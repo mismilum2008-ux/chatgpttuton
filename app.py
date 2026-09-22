@@ -744,8 +744,48 @@ dan diperiksa oleh mahasiswa sebelum diposting.
 
 
 # =========================================================
-# GENERATE DENGAN GEMINI
+# GENERATE DENGAN GEMINI (DENGAN RETRY MEKANISME ANTI-503)
 # =========================================================
+
+def call_gemini_with_retry(
+    client,
+    contents,
+    max_retries=3,
+    delay=3
+):
+    """
+    Memanggil API Gemini dengan penanganan otomatis jika terjadi 
+    error 503 UNAVAILABLE / Server Busy.
+    """
+    for attempt in range(max_retries):
+        try:
+            response = client.models.generate_content(
+                model=MODEL_NAME,
+                contents=contents,
+            )
+            return response
+
+        except Exception as e:
+            error_msg = str(e)
+
+            # Cek indikasi error 503, temporary rate limit, atau server overload
+            is_temporary_error = any(
+                code in error_msg.upper() 
+                for code in ["503", "UNAVAILABLE", "OVERLOADED", "RESOURCE_EXHAUSTED", "429"]
+            )
+
+            if is_temporary_error and attempt < max_retries - 1:
+                wait_time = delay * (attempt + 1)  # Exponential Backoff (3dtk, 6dtk, 9dtk)
+                st.warning(
+                    f"⚠️ Server Gemini sedang padat (Error 503). "
+                    f"Mencoba ulang otomatis dalam {wait_time} detik... "
+                    f"(Percobaan {attempt + 1}/{max_retries})"
+                )
+                time.sleep(wait_time)
+            else:
+                # Jika bukan error 503 atau percobaaan sudah habis, lempar error ke caller
+                raise e
+
 
 def generate_answer(
     client,
@@ -763,9 +803,9 @@ def generate_answer(
                 gemini_file
             )
 
-    response = client.models.generate_content(
-        model=MODEL_NAME,
-        contents=contents,
+    response = call_gemini_with_retry(
+        client,
+        contents
     )
 
     if not response:
@@ -1296,11 +1336,9 @@ if st.session_state.answer:
                         )
                     )
 
-                    response = (
-                        client.models.generate_content(
-                            model=MODEL_NAME,
-                            contents=natural_prompt,
-                        )
+                    response = call_gemini_with_retry(
+                        client,
+                        [natural_prompt]
                     )
 
                     if response and response.text:
